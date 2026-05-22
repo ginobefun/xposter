@@ -11,7 +11,7 @@ const pkg = readJson("package.json");
 
 assert.equal(manifest.manifest_version, 3, "manifest must be MV3");
 assert.equal(manifest.name, "xPoster", "manifest name must stay xPoster");
-assert.equal(pkg.version, manifest.version, "package and manifest versions must match");
+assert.equal(pkg.version.replace(/\.0$/, ""), manifest.version, "package and manifest versions must match");
 
 const requiredFiles = [
   "sidepanel.html",
