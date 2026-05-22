@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+  <title id="title">xPoster publishing flow</title>
+  <desc id="desc">The xPoster workflow from Markdown draft to manual publishing in X.</desc>
+  <rect width="1200" height="420" fill="#f6f3ec"/>
+  <text x="70" y="70" fill="#211f1b" font-family="Arial, sans-serif" font-size="34" font-weight="700">From Markdown to X Article</text>
+  <g font-family="Arial, sans-serif" font-size="18">
+    <rect x="70" y="128" width="180" height="132" rx="16" fill="#ffffff" stroke="#d9d3c7" stroke-width="2"/>
+    <text x="100" y="178" fill="#211f1b" font-size="22" font-weight="700">Markdown</text>
+    <text x="100" y="214" fill="#5c574f">Paste or file</text>
+    <path d="M260 194h66" stroke="#25352d" stroke-width="5" stroke-linecap="round"/>
+    <path d="M318 180l18 14-18 14" fill="none" stroke="#25352d" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="350" y="128" width="180" height="132" rx="16" fill="#ffffff" stroke="#d9d3c7" stroke-width="2"/>
+    <text x="386" y="178" fill="#211f1b" font-size="22" font-weight="700">Preview</text>
+    <text x="386" y="214" fill="#5c574f">Catch issues</text>
+    <path d="M540 194h66" stroke="#25352d" stroke-width="5" stroke-linecap="round"/>
+    <path d="M598 180l18 14-18 14" fill="none" stroke="#25352d" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="630" y="128" width="180" height="132" rx="16" fill="#ffffff" stroke="#d9d3c7" stroke-width="2"/>
+    <text x="666" y="178" fill="#211f1b" font-size="22" font-weight="700">Check</text>
+    <text x="666" y="214" fill="#5c574f">X tab ready?</text>
+    <path d="M820 194h66" stroke="#25352d" stroke-width="5" stroke-linecap="round"/>
+    <path d="M878 180l18 14-18 14" fill="none" stroke="#25352d" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="910" y="128" width="180" height="132" rx="16" fill="#25352d"/>
+    <text x="956" y="178" fill="#ffffff" font-size="22" font-weight="700">Import</text>
+    <text x="956" y="214" fill="#d9ead8">Fill draft</text>
+    <rect x="294" y="314" width="612" height="54" rx="27" fill="#fff2c7"/>
+    <text x="354" y="348" fill="#5b4312" font-size="19" font-weight="700">Final Publish click stays inside X and belongs to you.</text>
+  </g>
+</svg>

@@ -1,0 +1,929 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>xPoster</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">xPoster <span id="extensionVersion">v...</span></p>
+          <h1>Import Markdown to X Articles</h1>
+          <p class="topbar-subtitle">Put your draft here first. xPoster shows the next step and never publishes for you.</p>
+        </div>
+        <div class="topbar-actions">
+          <label class="language-control" for="languageSelect">
+            <span>Language</span>
+            <select id="languageSelect" aria-label="Language">
+              <option value="en">English</option>
+              <option value="zh">中文</option>
+            </select>
+          </label>
+          <span class="page-state" id="pageState"><span>X Article tab</span><strong>Checking</strong></span>
+        </div>
+      </header>
+
+      <section class="quick-steps-panel" aria-label="Import workflow">
+        <ol class="quick-steps" id="quickSteps">
+          <li data-step="draft" data-tone="idle">
+            <span class="step-number">1</span>
+            <div>
+              <strong>Paste Markdown</strong>
+              <span>Draft</span>
+            </div>
+          </li>
+          <li data-step="target" data-tone="idle">
+            <span class="step-number">2</span>
+            <div>
+              <strong>Open X Article</strong>
+              <span>X tab</span>
+            </div>
+          </li>
+          <li data-step="import" data-tone="idle">
+            <span class="step-number">3</span>
+            <div>
+              <strong>Import, then review</strong>
+              <span>Final check</span>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="next-action" id="nextAction" aria-label="Next action" data-tone="warn">
+        <div>
+          <span class="next-action-label">Next step</span>
+          <h2 id="nextActionTitle">Load a Markdown draft</h2>
+          <p id="nextActionDetail">Paste Markdown into the draft box, choose a file, or load an example.</p>
+        </div>
+        <button class="secondary next-action-button" id="nextActionButton" type="button">Choose file</button>
+      </section>
+
+      <section class="assurance-strip" aria-label="Cost, privacy, and control">
+        <span>Free, no account or subscription</span>
+        <span>Draft stays in this browser</span>
+        <span>You review and publish in X</span>
+      </section>
+
+      <section class="workflow-rail" aria-label="Publishing workflow">
+        <ol id="workflowRail">
+          <li data-stage="draft" data-tone="idle">
+            <strong>Draft</strong>
+            <span>No Markdown loaded.</span>
+          </li>
+          <li data-stage="target" data-tone="idle">
+            <strong>X Article</strong>
+            <span>Open article.</span>
+          </li>
+          <li data-stage="bridge" data-tone="idle">
+              <strong>X editor</strong>
+            <span>Run a check.</span>
+          </li>
+          <li data-stage="media" data-tone="idle">
+            <strong>Media</strong>
+            <span>No uploads yet.</span>
+          </li>
+          <li data-stage="evidence" data-tone="idle">
+            <strong>Review</strong>
+            <span>No review yet.</span>
+          </li>
+        </ol>
+      </section>
+
+      <section class="live-gate" id="liveGate" aria-label="Import readiness" data-tone="warn">
+        <div class="live-gate-main">
+          <span class="live-gate-kicker">Current step</span>
+          <strong id="liveGatePrimary">Not ready yet</strong>
+          <span id="liveGateDetail">Load a draft and open X Articles before importing.</span>
+        </div>
+        <div class="live-gate-score" aria-label="Readiness progress">
+          <span id="liveGateScore">0/9</span>
+          <div class="live-gate-meter">
+            <span id="liveGateMeterBar"></span>
+          </div>
+        </div>
+        <div class="live-gate-chips" id="liveGateChips" aria-label="Import readiness status">
+          <span data-tone="warn">Draft</span>
+          <span data-tone="warn">X Article</span>
+          <span data-tone="idle">Import</span>
+          <span data-tone="idle">Review</span>
+        </div>
+      </section>
+
+      <section class="command-dock" aria-label="Advanced command dock" data-tone="warn">
+        <div class="dock-status">
+          <span>Next</span>
+          <strong id="dockGate">Load draft</strong>
+          <em id="dockDetail">Paste or load Markdown before importing.</em>
+        </div>
+        <div class="dock-meter" aria-label="Readiness meter">
+          <span id="dockMeterBar"></span>
+        </div>
+        <div class="dock-actions">
+          <button class="dock-button" id="dockImport" type="button" disabled>Import</button>
+          <button class="dock-button" id="dockEvidence" type="button">Save result</button>
+        </div>
+        <div class="dock-jumps" id="dockJumps" aria-label="Jump to section">
+          <button class="jump-button" type="button" data-jump-target="draft" aria-current="true">Draft</button>
+          <button class="jump-button" type="button" data-jump-target="preview">Preview</button>
+          <button class="jump-button" type="button" data-jump-target="check">Check</button>
+          <button class="jump-button" type="button" data-jump-target="verify">Review</button>
+          <button class="jump-button" type="button" data-jump-target="evidence">Save</button>
+        </div>
+      </section>
+
+      <nav class="tabs" aria-label="Workspace sections">
+        <button class="tab active" type="button" data-tab="draft">Draft</button>
+        <button class="tab" type="button" data-tab="preview">Preview</button>
+        <button class="tab" type="button" data-tab="settings">Settings</button>
+      </nav>
+
+      <section class="composer panel active" id="draftPanel" data-panel="draft">
+        <div class="composer-head">
+          <label for="markdown">Markdown draft</label>
+          <div class="toolbar">
+            <button class="icon-button" id="loadFile" title="Choose Markdown file" aria-label="Choose Markdown file">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6Zm-1 2.5L17.5 9H13V4.5ZM8 13h3V9h2v4h3l-4 4-4-4Z"/></svg>
+            </button>
+            <button class="text-button" id="loadSmoke" title="Load an example Markdown draft" aria-label="Load example Markdown draft">Example</button>
+            <button class="icon-button" id="clearDraft" title="Clear draft" aria-label="Clear draft">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8l1 2h4v2H3V5h4l1-2Zm1 6h2v10H9V9Zm4 0h2v10h-2V9Zm4 0h2l-1 12H6L5 9h2l.7 10h8.6L17 9Z"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="draft-explainer" aria-label="Draft editor note">
+          <strong>Raw Markdown stays here</strong>
+          <span>This box always keeps the original Markdown text. Use Preview to see recognized images and links; images appear in X only after approval, download check, and Import.</span>
+        </div>
+        <textarea id="markdown" spellcheck="false" placeholder="# Article title&#10;&#10;Paste your Markdown here. xPoster will preview text and images, then show the next step."></textarea>
+        <p class="draft-help">If image links still look like Markdown here, that is normal. xPoster converts them during Import, not inside this text box.</p>
+      </section>
+
+      <section class="actions" aria-label="Main import actions" data-empty="true">
+        <div class="action-primary-block">
+          <span class="action-label">Do this next</span>
+          <button class="primary" id="importDraft" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v3H4V4Zm0 5h10v3H4V9Zm0 5h8v3H4v-3Zm13.5-.7V9h2v4.3l1.6-1.6 1.4 1.4-3.5 3.5-3.5-3.5 1.4-1.4 1.6 1.6ZM17 18h5v2h-5v-2Z"/></svg>
+            Import
+          </button>
+        </div>
+        <div class="action-secondary-block" aria-label="Other actions">
+          <button class="secondary" id="openArticles" type="button">Open article</button>
+          <button class="secondary" id="dockCheck" type="button">Check article</button>
+        </div>
+        <p class="import-hint" id="importHint" data-tone="warn">Paste or load Markdown before importing.</p>
+      </section>
+
+      <section class="remote-permissions" id="remotePermissionPanel" aria-label="Remote image access" data-tone="idle" hidden>
+        <div>
+          <h2>Web images need one Chrome approval before import</h2>
+          <p id="remotePermissionMeta">No remote image URLs detected.</p>
+        </div>
+        <ol class="remote-permission-steps" id="remotePermissionSteps" aria-label="Remote image steps">
+          <li data-remote-step="allow" data-tone="warn">
+            <strong>1</strong>
+            <span>Allow site</span>
+          </li>
+          <li data-remote-step="check" data-tone="idle">
+            <strong>2</strong>
+            <span>Check images</span>
+          </li>
+          <li data-remote-step="import" data-tone="idle">
+            <strong>3</strong>
+            <span>Import</span>
+          </li>
+        </ol>
+        <ol id="remotePermissionList" class="remote-permission-list">
+          <li data-tone="idle">
+            <strong>No web images</strong>
+            <span>No remote image URLs detected.</span>
+          </li>
+        </ol>
+        <div class="remote-explainer" aria-label="Why Chrome asks for image website access">
+          <p><strong>Why:</strong> these Markdown images live on another website.</p>
+          <p><strong>What to do next:</strong> click Allow image website, then Check downloads.</p>
+          <p><strong>Limit:</strong> xPoster only reads this image site and never publishes for you.</p>
+        </div>
+        <div class="remote-permission-actions" id="remotePermissionActions">
+          <button class="secondary compact" id="allowRemoteImages" type="button">Allow image website</button>
+          <button class="secondary compact" id="checkRemoteImages" type="button" disabled>Check downloads</button>
+        </div>
+      </section>
+
+      <section class="preview panel" id="previewPanel" data-panel="preview" aria-label="Draft preview">
+        <div class="preview-head">
+          <div>
+            <h2 id="previewTitle">No title yet</h2>
+            <p id="previewMeta">Write Markdown to inspect the article structure.</p>
+          </div>
+        </div>
+        <div class="preview-note" aria-label="Preview explanation">
+          <strong>Preview is the conversion check</strong>
+          <span>The draft box stays as text. This section shows what xPoster recognized before it fills X.</span>
+        </div>
+        <div class="preview-body" id="previewBody">
+          <p class="empty">This preview shows what xPoster found and what it will move into X.</p>
+        </div>
+        <div class="plan-readiness" id="planReadiness">
+          <span>Text blocks 0</span>
+          <span>Special blocks 0</span>
+          <span>Images 0</span>
+          <span>Local images 0</span>
+        </div>
+        <div class="plan-breakdown" id="planBreakdown">
+          <div class="plan-breakdown-head">
+          <h2>What xPoster will do</h2>
+          <p>Load Markdown to see the plain-language import steps.</p>
+          </div>
+          <ol class="plan-steps" id="planSteps">
+            <li>No plan generated.</li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="inspector" aria-label="Markdown inspector">
+        <div class="metric">
+          <span>Title</span>
+          <strong id="titleMetric">None</strong>
+        </div>
+        <div class="metric">
+          <span>Images</span>
+          <strong id="imageMetric">0</strong>
+        </div>
+        <div class="metric">
+          <span>Tables</span>
+          <strong id="tableMetric">0</strong>
+        </div>
+        <div class="metric">
+          <span>Tweets</span>
+          <strong id="tweetMetric">0</strong>
+        </div>
+      </section>
+
+      <section class="readiness" aria-label="X Article readiness">
+        <div>
+          <span>X Article</span>
+          <strong id="targetReady">Open X</strong>
+        </div>
+        <div>
+          <span>Editor</span>
+          <strong id="editorReady">Unknown</strong>
+        </div>
+        <div>
+          <span>Local images</span>
+          <strong id="vaultReady">Optional</strong>
+        </div>
+      </section>
+
+      <details class="diagnostics-details" id="advancedDiagnostics">
+        <summary>
+          <span>
+            <strong>More details</strong>
+            <em>Open this only when xPoster asks you to fix something.</em>
+          </span>
+        </summary>
+        <div class="diagnostics-body">
+          <section class="target-context" id="targetContextPanel" aria-label="Article xPoster will fill" data-tone="idle">
+            <div class="section-head">
+              <div>
+                <h2>Article xPoster will fill</h2>
+                <p id="targetContextMeta">No active X Article selected.</p>
+              </div>
+              <span class="target-context-state" id="targetContextState">Idle</span>
+            </div>
+            <dl class="target-context-grid">
+              <div>
+                <dt>X page</dt>
+                <dd id="targetContextRoute">No X tab</dd>
+              </div>
+              <div>
+                <dt>Article ID</dt>
+                <dd id="targetContextArticle">None</dd>
+              </div>
+              <div>
+                <dt>Page</dt>
+                <dd id="targetContextTitle">Unknown</dd>
+              </div>
+              <div>
+                <dt>Current editor text</dt>
+                <dd id="targetContextSample">Open or create an X Article draft before importing.</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section class="issue-queue" aria-label="Issue queue">
+            <div class="section-head">
+              <div>
+                <h2>What needs attention</h2>
+                <p id="issueQueueMeta">Load Markdown to see what still needs fixing.</p>
+              </div>
+            </div>
+            <ol class="issue-list" id="issueQueueList">
+              <li data-tone="warn">
+                <span class="issue-source">Draft</span>
+              <div>
+                <strong>Load a Markdown draft</strong>
+              <span>Paste a draft, choose a file, or load the example.</span>
+            </div>
+                <button class="secondary compact" type="button" data-issue-action="loadFile">Choose file</button>
+              </li>
+            </ol>
+          </section>
+
+          <section class="conversion-map" aria-label="Draft contents">
+            <div class="section-head">
+              <div>
+                <h2>What is in your draft</h2>
+                <p id="conversionMapMeta">Load Markdown to see text, images, tables, tweets, code, and dividers.</p>
+              </div>
+            </div>
+            <ol class="conversion-list" id="conversionMapList">
+              <li data-map="title" data-tone="idle">
+                <strong>Title</strong>
+                <span>Waiting for frontmatter or first H1.</span>
+                <em>0</em>
+              </li>
+              <li data-map="cover" data-tone="idle">
+                <strong>Cover</strong>
+                <span>Waiting for frontmatter cover or first image.</span>
+                <em>0</em>
+              </li>
+              <li data-map="text" data-tone="idle">
+                <strong>Text</strong>
+                <span>Headings, paragraphs, lists, quotes, links, and inline styles.</span>
+                <em>0</em>
+              </li>
+              <li data-map="image" data-tone="idle">
+                <strong>Images</strong>
+                <span>Prepared as files, then uploaded through X.</span>
+                <em>0</em>
+              </li>
+              <li data-map="table" data-tone="idle">
+                <strong>Tables</strong>
+                <span>Rendered as images before upload.</span>
+                <em>0</em>
+              </li>
+              <li data-map="tweet" data-tone="idle">
+                <strong>Tweets</strong>
+                <span>Inserted as embedded tweets in X.</span>
+                <em>0</em>
+              </li>
+              <li data-map="code" data-tone="idle">
+                <strong>Code</strong>
+                <span>Inserted as code blocks in X.</span>
+                <em>0</em>
+              </li>
+              <li data-map="divider" data-tone="idle">
+                <strong>Dividers</strong>
+                <span>Inserted as dividers in X.</span>
+                <em>0</em>
+              </li>
+              <li data-map="local" data-tone="idle">
+                <strong>Local images</strong>
+                <span>Relative image paths need a readable folder.</span>
+                <em>0</em>
+              </li>
+              <li data-map="remote" data-tone="idle">
+                <strong>Remote images</strong>
+                <span>No remote image URLs detected.</span>
+                <em>0</em>
+              </li>
+            </ol>
+          </section>
+
+          <section class="import-ledger" aria-label="How xPoster will place the draft">
+            <div class="section-head">
+              <div>
+                <h2>How the draft will be placed</h2>
+                <p id="importLedgerMeta">Load Markdown to see how each part will be handled.</p>
+              </div>
+            </div>
+            <ol class="ledger-list" id="importLedgerList">
+              <li data-tone="idle">
+                <span class="ledger-index">-</span>
+                <div>
+                  <strong>No draft loaded</strong>
+                  <span>Each part will show whether it becomes text, an image, the title, the cover, or an embed.</span>
+                </div>
+                <em>Idle</em>
+              </li>
+            </ol>
+          </section>
+
+          <section class="review" aria-label="Draft review">
+            <div class="section-head">
+              <div>
+                <h2>Draft notes</h2>
+                <p id="reviewMeta">Write Markdown to get publishing notes.</p>
+              </div>
+            </div>
+            <ol class="review-list" id="reviewList">
+              <li>No draft loaded.</li>
+            </ol>
+          </section>
+
+          <section class="preflight" id="preflightPanel" aria-label="Publishing check">
+            <div class="section-head">
+              <div>
+                <h2>Check before import</h2>
+                <p id="preflightMeta">Checks the draft, X Article tab, editor, images, and import plan.</p>
+              </div>
+              <button class="secondary compact" id="runPreflight">Check article</button>
+            </div>
+            <ol class="preflight-list" id="preflightList">
+              <li data-check="draft" data-tone="idle">
+                <span class="check-mark" aria-hidden="true"></span>
+                <div>
+                  <strong>Draft</strong>
+                  <span>Paste Markdown to begin.</span>
+                </div>
+              </li>
+              <li data-check="target" data-tone="idle">
+                <span class="check-mark" aria-hidden="true"></span>
+                <div>
+                  <strong>X Article</strong>
+                  <span>Open an X Articles tab.</span>
+                </div>
+              </li>
+              <li data-check="page-script" data-tone="idle">
+                <span class="check-mark" aria-hidden="true"></span>
+                <div>
+                  <strong>X page script</strong>
+                  <span>Refresh the X tab after updating xPoster.</span>
+                </div>
+              </li>
+              <li data-check="target-lock" data-tone="idle">
+                <span class="check-mark" aria-hidden="true"></span>
+                <div>
+                  <strong>Current article</strong>
+                  <span>Click Check article so xPoster confirms it will use this article.</span>
+                </div>
+              </li>
+              <li data-check="editor" data-tone="idle">
+                <span class="check-mark" aria-hidden="true"></span>
+                <div>
+                  <strong>Editor</strong>
+                  <span>Waiting for X page status.</span>
+                </div>
+              </li>
+              <li data-check="editor-content" data-tone="idle">
+                <span class="check-mark" aria-hidden="true"></span>
+                <div>
+                  <strong>Existing content</strong>
+                  <span>Click Check article to see whether the target draft already has content.</span>
+                </div>
+              </li>
+              <li data-check="bridge" data-tone="idle">
+                <span class="check-mark" aria-hidden="true"></span>
+                <div>
+                  <strong>Can write to X</strong>
+                  <span>Run a check with the X tab active.</span>
+                </div>
+              </li>
+              <li data-check="uploads" data-tone="idle">
+                <span class="check-mark" aria-hidden="true"></span>
+                <div>
+                  <strong>Image uploads</strong>
+                  <span>No image upload requirement detected yet.</span>
+                </div>
+              </li>
+              <li data-check="assets" data-tone="idle">
+                <span class="check-mark" aria-hidden="true"></span>
+                <div>
+                  <strong>Local images</strong>
+                  <span>Local image folder is optional.</span>
+                </div>
+              </li>
+              <li data-check="remote-images" data-tone="idle">
+                <span class="check-mark" aria-hidden="true"></span>
+                <div>
+                  <strong>Remote images</strong>
+                  <span>No remote image URLs detected.</span>
+                </div>
+              </li>
+              <li data-check="plan" data-tone="idle">
+                <span class="check-mark" aria-hidden="true"></span>
+                <div>
+                  <strong>Draft contents</strong>
+                  <span>No import plan generated yet.</span>
+                </div>
+              </li>
+            </ol>
+          </section>
+
+          <section class="execution-timeline" aria-label="Import steps">
+            <div class="section-head">
+              <div>
+                <h2>Import steps</h2>
+                <p id="timelineMeta">Load Markdown to see the steps xPoster will run.</p>
+              </div>
+            </div>
+            <ol class="timeline-list" id="timelineList">
+              <li data-timeline-step="parse" data-tone="idle">
+                <span class="timeline-index">1</span>
+                <div>
+                  <strong>Read Markdown</strong>
+                  <span>Waiting for a draft.</span>
+                </div>
+                <em>Idle</em>
+              </li>
+              <li data-timeline-step="media" data-tone="idle">
+                <span class="timeline-index">2</span>
+                <div>
+                  <strong>Prepare media</strong>
+                  <span>Images and tables will be prepared after parsing.</span>
+                </div>
+                <em>Idle</em>
+              </li>
+              <li data-timeline-step="paste" data-tone="idle">
+                <span class="timeline-index">3</span>
+                <div>
+                  <strong>Write article body</strong>
+                  <span>The article body is not ready yet.</span>
+                </div>
+                <em>Idle</em>
+              </li>
+              <li data-timeline-step="replace" data-tone="idle">
+                <span class="timeline-index">4</span>
+                <div>
+                  <strong>Place images and embeds</strong>
+                  <span>X editor status is unknown.</span>
+                </div>
+                <em>Idle</em>
+              </li>
+              <li data-timeline-step="metadata" data-tone="idle">
+                <span class="timeline-index">5</span>
+                <div>
+                  <strong>Set title and cover</strong>
+                  <span>Title and cover will be added when available.</span>
+                </div>
+                <em>Idle</em>
+              </li>
+              <li data-timeline-step="evidence" data-tone="idle">
+                <span class="timeline-index">6</span>
+                <div>
+                  <strong>Save what happened</strong>
+                  <span>Nothing saved yet.</span>
+                </div>
+                <em>Idle</em>
+              </li>
+            </ol>
+          </section>
+
+          <section class="live-progress" id="liveProgress" aria-label="Live import progress" data-tone="idle">
+            <div class="section-head">
+              <div>
+                <h2>Import progress</h2>
+                <p id="liveProgressMeta">No import has run yet.</p>
+              </div>
+              <span class="progress-state" id="liveProgressState">Idle</span>
+            </div>
+            <div class="progress-meter" aria-label="Live import progress meter">
+              <span id="liveProgressBar"></span>
+            </div>
+            <div class="progress-current">
+              <strong id="liveProgressTitle">Waiting for import</strong>
+              <span id="liveProgressDetail">Run Import to see each step while xPoster fills the active X Article.</span>
+            </div>
+            <ol class="progress-list" id="liveProgressList">
+              <li data-tone="idle">
+                <span class="progress-dot" aria-hidden="true"></span>
+                <div>
+                  <strong>No import updates yet</strong>
+                  <span>The side panel will show progress and errors while importing.</span>
+                </div>
+              </li>
+            </ol>
+          </section>
+
+          <section class="recovery-panel" id="recoveryPanel" aria-label="Fix problems" data-tone="idle">
+            <div class="section-head">
+              <div>
+                <h2>If something goes wrong</h2>
+                <p id="recoveryMeta">No problem found yet.</p>
+              </div>
+              <span class="recovery-state" id="recoveryState">Idle</span>
+            </div>
+            <ol class="recovery-list" id="recoveryList">
+              <li data-tone="idle">
+                <span class="recovery-index">1</span>
+                <div>
+                  <strong>Save what happened</strong>
+                  <span>Use Check article or Import so xPoster can show the exact problem if X changes.</span>
+                </div>
+                <button class="secondary compact" type="button" data-recovery-action="check">Check</button>
+              </li>
+            </ol>
+          </section>
+        </div>
+      </details>
+
+      <section class="vault" id="localImagesPanel" hidden>
+        <div>
+          <h2>Local image folder</h2>
+          <p id="vaultState">Not configured</p>
+          <p class="vault-detail" id="vaultDetail">Choose from an active X page when Markdown uses relative image paths.</p>
+        </div>
+        <div class="button-cluster">
+          <button class="secondary compact" id="pickVault">Choose</button>
+          <button class="secondary compact danger" id="clearVault" disabled>Clear</button>
+        </div>
+      </section>
+
+      <section class="run-summary" id="runSummary" hidden>
+        <h2>Last import</h2>
+        <div class="summary-grid">
+          <span>Images</span><strong id="summaryImages">0 / 0</strong>
+          <span>Embeds and code</span><strong id="summaryBlocks">0 / 0</strong>
+          <span>Title</span><strong id="summaryTitle">Not run</strong>
+          <span>Cover</span><strong id="summaryCover">Not run</strong>
+          <span>Elapsed</span><strong id="summaryElapsed">0.0s</strong>
+        </div>
+      </section>
+
+      <section class="live-runbook" id="verificationPanel" aria-label="Post-import review" hidden>
+        <div class="section-head">
+          <div>
+            <h2>After import</h2>
+            <p id="liveRunbookMeta">Confirm the X Article looks right before you finish.</p>
+          </div>
+          <button class="secondary compact" id="focusRunbook">Review</button>
+        </div>
+        <ol class="runbook-list" id="liveRunbookList">
+          <li data-runbook-step="draft" data-tone="idle">
+            <span class="runbook-index">1</span>
+            <div>
+              <strong>Add your draft</strong>
+              <span>Paste Markdown, choose a file, or use the example to try the workflow.</span>
+            </div>
+            <button class="secondary compact" type="button" data-runbook-action="loadFile">Choose file</button>
+          </li>
+          <li data-runbook-step="target" data-tone="idle">
+            <span class="runbook-index">2</span>
+            <div>
+              <strong>Open article</strong>
+              <span>Use an active X Articles tab.</span>
+            </div>
+            <button class="secondary compact" type="button" data-runbook-action="openArticles">Open</button>
+          </li>
+          <li data-runbook-step="diagnostics" data-tone="idle">
+            <span class="runbook-index">3</span>
+            <div>
+              <strong>Check article</strong>
+              <span>Make sure xPoster can reach the article editor and upload images.</span>
+            </div>
+            <button class="secondary compact" type="button" data-runbook-action="check">Check</button>
+          </li>
+          <li data-runbook-step="import" data-tone="idle">
+            <span class="runbook-index">4</span>
+            <div>
+              <strong>Import draft</strong>
+              <span>Import only after the check passes.</span>
+            </div>
+            <button class="secondary compact" type="button" data-runbook-action="import">Import</button>
+          </li>
+          <li data-runbook-step="result" data-tone="idle">
+            <span class="runbook-index">5</span>
+            <div>
+              <strong>Review in X</strong>
+              <span>Check the imported title, formatting, images, tables, embeds, code, and dividers.</span>
+            </div>
+            <button class="secondary compact" type="button" data-runbook-action="liveResult">Review</button>
+          </li>
+          <li data-runbook-step="evidence" data-tone="idle">
+            <span class="runbook-index">6</span>
+            <div>
+              <strong>Save a local record</strong>
+              <span>Copy or save a local record of the import.</span>
+            </div>
+            <button class="secondary compact" type="button" data-runbook-action="package">Records</button>
+          </li>
+        </ol>
+      </section>
+
+      <section class="live-result" id="liveResultPanel" aria-label="Article review checklist" hidden>
+        <div class="section-head">
+          <div>
+            <h2>Review in X</h2>
+            <p id="liveResultMeta">Tick what you confirmed in the X Article after import.</p>
+          </div>
+          <button class="secondary compact" id="resetLiveResult">Reset</button>
+        </div>
+        <ol class="live-result-list" id="liveResultList">
+          <li>
+            <label><input type="checkbox" data-live-check="title" /> Title set</label>
+            <span>The title from your current draft.</span>
+          </li>
+          <li>
+            <label><input type="checkbox" data-live-check="text" /> Text formatting</label>
+            <span>Paragraph, quote, lists, inline styles, and link are preserved.</span>
+          </li>
+          <li>
+            <label><input type="checkbox" data-live-check="image" /> Image uploaded</label>
+            <span>Images appear in the article after X upload completes.</span>
+          </li>
+          <li>
+            <label><input type="checkbox" data-live-check="table" /> Table image</label>
+            <span>Markdown table is rendered and uploaded as an image.</span>
+          </li>
+          <li>
+            <label><input type="checkbox" data-live-check="tweet" /> Tweet embed</label>
+            <span>Tweet URL becomes an embedded tweet block.</span>
+          </li>
+          <li>
+            <label><input type="checkbox" data-live-check="code-divider" /> Code and divider</label>
+            <span>Code blocks and dividers appear correctly.</span>
+          </li>
+          <li>
+            <label><input type="checkbox" data-live-check="markers" /> xPoster placeholders removed</label>
+            <span>No xPoster placeholder text remains in the article.</span>
+          </li>
+          <li>
+            <label><input type="checkbox" data-live-check="diagnostics" /> Check passed</label>
+            <span>xPoster can still reach the editor and media upload.</span>
+          </li>
+          <li>
+            <label><input type="checkbox" data-live-check="page-import" /> X file import works</label>
+            <span>X can still open a Markdown file when needed.</span>
+          </li>
+        </ol>
+      </section>
+
+      <details class="diagnostics-details evidence-details" id="evidenceDetails" hidden>
+        <summary>
+          <span>
+            <strong>Save or copy results</strong>
+            <em>Open this after Check or Import when you need a local record.</em>
+          </span>
+        </summary>
+        <div class="diagnostics-body">
+
+      <section class="proof-deck" aria-label="Saved result checklist">
+        <div class="section-head">
+          <div>
+            <h2>Saved result checklist</h2>
+            <p id="proofDeckMeta">This import is complete only after you review the X Article.</p>
+          </div>
+          <div class="button-cluster">
+            <button class="secondary compact" id="copyExtensionPath">Copy path</button>
+            <button class="secondary compact" id="copyProofDeck">Copy</button>
+          </div>
+        </div>
+        <div class="proof-path" id="extensionPath">the folder you cloned or downloaded</div>
+        <ol class="proof-list" id="proofDeckList">
+          <li data-proof="loaded" data-tone="warn">
+            <strong>xPoster loaded</strong>
+            <span>Confirm this xPoster copy is loaded in the signed-in Chrome profile.</span>
+          </li>
+          <li data-proof="target" data-tone="warn">
+            <strong>X Article</strong>
+            <span>Open X Articles in the active tab.</span>
+          </li>
+          <li data-proof="bridge" data-tone="warn">
+            <strong>Can write to X</strong>
+              <span>Click Check article after an article editor opens.</span>
+          </li>
+          <li data-proof="remote-images" data-tone="idle">
+            <strong>Remote image access</strong>
+            <span>No remote image URLs detected.</span>
+          </li>
+          <li data-proof="import" data-tone="idle">
+            <strong>Import completed</strong>
+            <span>No import record saved yet.</span>
+          </li>
+          <li data-proof="result" data-tone="idle">
+            <strong>Article reviewed</strong>
+            <span>0/9 final result checks recorded.</span>
+          </li>
+          <li data-proof="package" data-tone="idle">
+            <strong>Saved records</strong>
+            <span>Copy or save after the final result is complete.</span>
+          </li>
+        </ol>
+      </section>
+
+      <section class="completion-audit" aria-label="Before you finish">
+        <div class="section-head">
+          <div>
+            <h2>Before you finish</h2>
+            <p id="completionAuditMeta">Finish the X Article review before calling this import done.</p>
+          </div>
+        </div>
+        <ol class="audit-list" id="completionAuditList">
+          <li data-audit="extension" data-tone="warn">
+            <strong>Extension loaded</strong>
+            <span>Load xPoster in the signed-in Chrome profile.</span>
+          </li>
+          <li data-audit="draft" data-tone="error">
+            <strong>Markdown draft</strong>
+            <span>Load the example or use a real Markdown draft.</span>
+          </li>
+          <li data-audit="target" data-tone="error">
+            <strong>X Article</strong>
+            <span>Open X Articles in the active tab.</span>
+          </li>
+          <li data-audit="bridge-upload" data-tone="warn">
+            <strong>Editor and images</strong>
+            <span>Click Check article in the live X editor.</span>
+          </li>
+          <li data-audit="remote-images" data-tone="idle">
+            <strong>Remote image access</strong>
+            <span>No remote image URLs detected.</span>
+          </li>
+          <li data-audit="import" data-tone="idle">
+            <strong>Import completed</strong>
+            <span>No import run recorded yet.</span>
+          </li>
+          <li data-audit="result" data-tone="idle">
+            <strong>Article reviewed</strong>
+            <span>Record final article checks after import.</span>
+          </li>
+          <li data-audit="page-import" data-tone="idle">
+            <strong>Markdown file import</strong>
+            <span>Verify the file picker can import a Markdown draft.</span>
+          </li>
+          <li data-audit="package" data-tone="idle">
+            <strong>Saved records</strong>
+            <span>Copy or save the final record.</span>
+          </li>
+        </ol>
+      </section>
+
+      <section class="evidence" id="evidencePanel">
+        <div class="section-head">
+          <div>
+            <h2>Saved records</h2>
+            <p id="evidenceMeta">No check or import saved yet.</p>
+          </div>
+          <div class="button-cluster">
+            <button class="secondary compact" id="copyEvidence" disabled>Copy</button>
+            <button class="secondary compact" id="copyEvidencePackage">Copy all</button>
+            <button class="secondary compact" id="downloadEvidencePackage">Save</button>
+          </div>
+        </div>
+        <pre id="evidenceText">Run Check article or Import to save a record.</pre>
+      </section>
+        </div>
+      </details>
+
+      <section class="settings panel" data-panel="settings">
+        <h2>Settings</h2>
+        <div class="setting-row">
+          <div>
+            <strong>Everything is included</strong>
+            <span>No account, subscription, trial limit, or feature lock.</span>
+          </div>
+          <span class="setting-value">On</span>
+        </div>
+        <div class="setting-row">
+          <div>
+            <strong>Installed version</strong>
+            <span>Use this number to confirm Chrome has reloaded the newest xPoster build.</span>
+          </div>
+          <span class="setting-value" id="settingsVersion">v...</span>
+        </div>
+        <div class="setting-row">
+          <div>
+            <strong>Privacy and control</strong>
+            <span>Your draft stays in this browser. Import fills the editor only; you still review and publish in X.</span>
+          </div>
+          <span class="setting-value">Local</span>
+        </div>
+        <div class="setting-row">
+          <div>
+            <strong>Web image permission</strong>
+            <span>Remote image links may ask once for Chrome approval before xPoster can upload them into X.</span>
+          </div>
+          <span class="setting-value">Ask first</span>
+        </div>
+        <div class="setting-row">
+          <div>
+            <strong>Local image folder</strong>
+            <span id="vaultSettingsText">Choose the folder that contains relative image paths in your Markdown.</span>
+          </div>
+          <div class="button-cluster">
+            <button class="secondary compact" id="pickVaultSettings">Choose</button>
+            <button class="secondary compact danger" id="clearVaultSettings" disabled>Clear</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div>
+            <strong>Title and cover</strong>
+            <span>xPoster sets them automatically when the X Article editor allows it.</span>
+          </div>
+          <span class="setting-value">Auto</span>
+        </div>
+      </section>
+
+      <section class="activity" id="activityPanel" hidden>
+        <h2>Activity</h2>
+        <ol id="activityLog"></ol>
+      </section>
+    </main>
+
+    <script src="src/shared.js"></script>
+    <script src="sidepanel.js"></script>
+  </body>
+</html>
