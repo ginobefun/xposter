@@ -122,7 +122,7 @@
 
       <nav class="tabs" aria-label="Workspace sections">
         <button class="tab active" type="button" data-tab="draft">Pending</button>
-        <button class="tab" type="button" data-tab="records">Publish records</button>
+        <button class="tab" type="button" data-tab="records">Records</button>
         <button class="tab" type="button" data-tab="settings">Settings</button>
       </nav>
 
@@ -227,10 +227,10 @@
         </div>
       </section>
 
-      <section class="records panel" id="recordsPanel" data-panel="records" aria-label="Publish records">
+      <section class="records panel" id="recordsPanel" data-panel="records" aria-label="Records">
         <div class="records-empty" id="recordsEmpty">
-          <strong>No publish record yet</strong>
-          <span>Write a Markdown draft into X Article. The latest result and activity will appear here.</span>
+          <strong>No records yet</strong>
+          <span>Load Markdown, check X, or write an article. Each step will appear here.</span>
         </div>
         <section class="run-summary" id="runSummary" hidden>
           <h2>Last import</h2>
@@ -244,16 +244,16 @@
           </div>
         </section>
 
-        <section class="record-history" id="recordHistory" aria-label="Publish history">
+        <section class="record-history" id="recordHistory" aria-label="Records">
           <div class="section-head">
             <div>
-              <h2>Publish history</h2>
-              <p id="recordHistoryMeta">No saved records yet.</p>
+              <h2>Records</h2>
+              <p id="recordHistoryMeta">No records yet.</p>
             </div>
             <button class="secondary compact" id="clearRecordHistory" type="button" disabled>Clear</button>
           </div>
           <ol class="record-history-list" id="recordHistoryList">
-            <li class="record-history-empty">Write or check an article to create the first record.</li>
+            <li class="record-history-empty">Load Markdown, run Check, or Write article to create the first record.</li>
           </ol>
         </section>
 
@@ -477,7 +477,7 @@
               <button class="secondary compact" id="downloadEvidencePackage">Save</button>
             </div>
           </div>
-          <pre id="evidenceText">Write an article to save a local record.</pre>
+          <pre id="evidenceText">Run Check or Write article to save a detailed record.</pre>
         </section>
           </div>
         </details>

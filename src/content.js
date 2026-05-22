@@ -124,7 +124,7 @@
 
   function statusTitleForLevel(level) {
     if (level === "done") return "Article written";
-    if (level === "warn") return "Needs attention";
+    if (level === "warn") return "Image note";
     if (level === "error") return "Could not write";
     return "Writing article";
   }
@@ -144,12 +144,19 @@
         gap: 7px;
         padding: 13px 14px 12px;
         border: 1px solid #d8d2c6;
-        background: #fbfaf7;
+        overflow: hidden;
+        isolation: isolate;
+        background:
+          linear-gradient(110deg, transparent 0 22%, rgba(47, 111, 104, 0.12) 42%, transparent 62%),
+          radial-gradient(circle at 18px 18px, rgba(32, 31, 27, 0.08) 1px, transparent 1.5px),
+          #fbfaf7;
+        background-size: 190% 100%, 22px 22px, auto;
         color: #201f1b;
         font: 13px/1.45 ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;
         letter-spacing: 0;
         box-shadow: 0 18px 46px rgba(32, 31, 27, 0.2);
         pointer-events: none;
+        animation: __xposter_status_in 220ms cubic-bezier(0.22, 1, 0.36, 1) both, __xposter_status_sweep 3s linear infinite;
       }
       #${STATUS_ID}::before {
         content: "";
@@ -161,7 +168,26 @@
       #${STATUS_ID}[data-level="warn"]::before { background: #a7552b; }
       #${STATUS_ID}[data-level="done"]::before { background: #3f6f42; }
       #${STATUS_ID}[data-level="error"]::before { background: #9d2f2f; }
+      #${STATUS_ID}[data-level="warn"] {
+        background-image:
+          linear-gradient(110deg, transparent 0 22%, rgba(167, 85, 43, 0.13) 42%, transparent 62%),
+          radial-gradient(circle at 18px 18px, rgba(32, 31, 27, 0.08) 1px, transparent 1.5px);
+      }
+      #${STATUS_ID}[data-level="done"] {
+        background-image:
+          linear-gradient(110deg, rgba(63, 111, 66, 0.12), transparent 58%),
+          radial-gradient(circle at 18px 18px, rgba(32, 31, 27, 0.08) 1px, transparent 1.5px);
+        animation: __xposter_status_in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+      #${STATUS_ID}[data-level="error"] {
+        background-image:
+          linear-gradient(110deg, rgba(157, 47, 47, 0.13), transparent 58%),
+          radial-gradient(circle at 18px 18px, rgba(32, 31, 27, 0.08) 1px, transparent 1.5px);
+        animation: __xposter_status_in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
       #${STATUS_ID} .__xposter_status_head {
+        position: relative;
+        z-index: 1;
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -182,9 +208,24 @@
       #${STATUS_ID}[data-level="done"] .__xposter_status_head strong { color: #3f6f42; }
       #${STATUS_ID}[data-level="error"] .__xposter_status_head strong { color: #9d2f2f; }
       #${STATUS_ID} p {
+        position: relative;
+        z-index: 1;
         margin: 0;
         color: #4c4840;
         overflow-wrap: anywhere;
+      }
+      @keyframes __xposter_status_in {
+        from { opacity: 0; transform: translateY(-8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes __xposter_status_sweep {
+        from { background-position: 160% 0, 0 0, 0 0; }
+        to { background-position: -60% 0, 0 0, 0 0; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #${STATUS_ID} {
+          animation: none;
+        }
       }
     `;
     document.head.appendChild(style);
@@ -342,7 +383,7 @@
       };
       state.lastSummary = summary;
       broadcast({ type: "complete", summary });
-      showStatus(formatCompletionMessage(summary), mediaFailures.length || mainSummary?.imgFail ? "warn" : "done", 7000);
+      showStatus(formatCompletionMessage(summary), "done", 7000);
       return { ok: true, summary };
     } catch (error) {
       const message = error?.message || String(error);
@@ -698,6 +739,182 @@
     return importMarkdown(text, origin);
   }
 
+  function isImageFile(file) {
+    return Boolean(file && /^image\//i.test(file.type || ""));
+  }
+
+  function imageFilesFromTransfer(dataTransfer) {
+    return Array.from(dataTransfer?.files || []).filter(isImageFile);
+  }
+
+  function safeTransferData(dataTransfer, type) {
+    try {
+      return dataTransfer?.getData?.(type) || "";
+    } catch {
+      return "";
+    }
+  }
+
+  function cleanDroppedUrl(value) {
+    return String(value || "")
+      .trim()
+      .replace(/^<|>$/g, "")
+      .replace(/^['"]|['"]$/g, "");
+  }
+
+  function isSupportedDroppedImageUrl(value, explicitImage = false) {
+    const source = cleanDroppedUrl(value);
+    if (/^data:image\//i.test(source)) return true;
+    if (!/^https?:\/\//i.test(source)) return false;
+    if (explicitImage) return true;
+    try {
+      const url = new URL(source);
+      const path = decodeURIComponent(url.pathname || "");
+      const responseType = url.searchParams.get("response-content-type") || url.searchParams.get("content-type") || "";
+      return /\.(png|jpe?g|gif|webp|avif|bmp|svg)(?:$|[?#])/i.test(path) || /^image\//i.test(responseType);
+    } catch {
+      return /\.(png|jpe?g|gif|webp|avif|bmp|svg)(?:$|[?#])/i.test(source);
+    }
+  }
+
+  function imageUrlFromHtml(html) {
+    const match = String(html || "").match(/<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i);
+    return match && isSupportedDroppedImageUrl(match[1], true) ? cleanDroppedUrl(match[1]) : "";
+  }
+
+  function imageUrlFromText(text) {
+    const raw = String(text || "").trim();
+    if (!raw) return "";
+    const markdownImage = raw.match(/!\[[^\]]*]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/);
+    if (markdownImage && isSupportedDroppedImageUrl(markdownImage[1], true)) return cleanDroppedUrl(markdownImage[1]);
+    const htmlImage = imageUrlFromHtml(raw);
+    if (htmlImage) return htmlImage;
+    const lines = raw
+      .split(/\r?\n/)
+      .map((line) => cleanDroppedUrl(line))
+      .filter((line) => line && !line.startsWith("#"));
+    return lines.find((line) => isSupportedDroppedImageUrl(line)) || "";
+  }
+
+  function imageUrlFromTransfer(dataTransfer) {
+    const htmlImage = imageUrlFromHtml(safeTransferData(dataTransfer, "text/html"));
+    if (htmlImage) return htmlImage;
+    const uriImage = imageUrlFromText(safeTransferData(dataTransfer, "text/uri-list"));
+    if (uriImage) return uriImage;
+    return imageUrlFromText(safeTransferData(dataTransfer, "text/plain"));
+  }
+
+  function transferMayContainImageUrl(dataTransfer) {
+    const types = Array.from(dataTransfer?.types || []);
+    return types.includes("text/uri-list") || types.includes("text/html");
+  }
+
+  async function imageFilePayload(file) {
+    const buffer = await file.arrayBuffer();
+    return {
+      base64: shared.arrayBufferToBase64(buffer),
+      mime: file.type || shared.extensionMime(file.name || "image.png"),
+      fileName: file.name || `image-${Date.now()}.png`,
+      bytes: buffer.byteLength
+    };
+  }
+
+  function runMainUploadFiles(files) {
+    return new Promise((resolve, reject) => {
+      const requestId = `upload_${Math.random().toString(36).slice(2, 10)}`;
+      const timeout = window.setTimeout(() => {
+        window.removeEventListener("message", listener);
+        reject(new Error("X editor bridge did not respond"));
+      }, 45000);
+      const listener = (event) => {
+        if (event.source !== window || event.data?.source !== CHANNEL_FROM_MAIN) return;
+        const message = event.data;
+        if (message.requestId !== requestId) return;
+        if (message.kind === "upload-files-done") {
+          clearTimeout(timeout);
+          window.removeEventListener("message", listener);
+          resolve(message.summary || {});
+          return;
+        }
+        if (message.kind === "upload-files-error") {
+          clearTimeout(timeout);
+          window.removeEventListener("message", listener);
+          reject(new Error(message.error || "X image upload failed"));
+        }
+      };
+      window.addEventListener("message", listener);
+      window.postMessage({ source: CHANNEL_TO_MAIN, kind: "upload-files", requestId, files }, "*");
+    });
+  }
+
+  async function uploadPreparedImages(payloads, label = "dropped image") {
+    if (!payloads.length) return { ok: false, error: "No image data found" };
+    if (state.busy) return { ok: false, error: "Import already running" };
+    state.busy = true;
+    try {
+      if (!isArticleRoute()) throw new Error("Open X Articles first");
+      await ensureEditorReadyForFileImport();
+      if (!(await waitForMainReady())) throw new Error("X editor bridge is not ready");
+      showStatus(`Adding ${payloads.length} ${label}${payloads.length > 1 ? "s" : ""}...`, "work");
+      const summary = await runMainUploadFiles(payloads);
+      const message = `${summary.count || payloads.length} image(s) handed to X's uploader.`;
+      showStatus(message, "done", 5000);
+      broadcast({ type: "status", text: message, level: "done" });
+      return { ok: true, summary };
+    } catch (error) {
+      const message = error?.message || String(error);
+      showStatus(message, "error", 7000);
+      broadcast({ type: "error", error: message });
+      return { ok: false, error: message };
+    } finally {
+      state.busy = false;
+    }
+  }
+
+  async function uploadDroppedImages(files) {
+    if (!files.length) return { ok: false, error: "No image file found" };
+    const payloads = await Promise.all(files.map(imageFilePayload));
+    return uploadPreparedImages(payloads, "dropped image");
+  }
+
+  async function uploadDroppedImageUrl(url) {
+    const source = cleanDroppedUrl(url);
+    if (!source) return { ok: false, error: "No image link found" };
+    if (state.busy) return { ok: false, error: "Import already running" };
+    state.busy = true;
+    try {
+      if (!isArticleRoute()) throw new Error("Open X Articles first");
+      await ensureEditorReadyForFileImport();
+      if (!(await waitForMainReady())) throw new Error("X editor bridge is not ready");
+      showStatus("Downloading dropped image...", "work");
+      const result = await loadImageWithRetry(source, "dropped-image", 2);
+      if (!result?.ok) {
+        throw new Error(result?.error || "Could not download the dropped image");
+      }
+      showStatus("Adding image to the X article...", "work");
+      const summary = await runMainUploadFiles([
+        {
+          base64: result.base64,
+          mime: result.mime,
+          fileName: normalizeImageFileName(result.fileName || shared.guessFileName(source, "dropped-image"), "dropped-image", result.mime),
+          bytes: result.bytes,
+          source
+        }
+      ]);
+      const message = `${summary.count || 1} image handed to X's uploader.`;
+      showStatus(message, "done", 5000);
+      broadcast({ type: "status", text: message, level: "done" });
+      return { ok: true, summary };
+    } catch (error) {
+      const message = error?.message || String(error);
+      showStatus(message, "error", 8000);
+      broadcast({ type: "error", error: message });
+      return { ok: false, error: message };
+    } finally {
+      state.busy = false;
+    }
+  }
+
   async function ensureEditorReadyForFileImport() {
     if (isEditorRoute() && findEditor()) return;
     if (isEditorRoute()) await navigateToArticleList();
@@ -883,13 +1100,13 @@
 
   function installDragDrop() {
     document.addEventListener("dragenter", (event) => {
-      if (isXposterDropCandidate(event.dataTransfer) && isArticleRoute()) showDropHint(event.dataTransfer);
+      if (isXposterDropCandidate(event.dataTransfer) && isArticleRoute()) showDropHint(event.dataTransfer, event);
     }, true);
     document.addEventListener("dragover", (event) => {
       if (!isXposterDropCandidate(event.dataTransfer) || !isArticleRoute()) return;
       event.preventDefault();
       event.dataTransfer.dropEffect = "copy";
-      showDropHint(event.dataTransfer);
+      showDropHint(event.dataTransfer, event);
     }, true);
     document.addEventListener("dragleave", (event) => {
       if (hasFiles(event.dataTransfer) && isLeavingDocument(event)) hideDropHint();
@@ -898,9 +1115,11 @@
       if (!isXposterDropCandidate(event.dataTransfer) || !isArticleRoute()) return;
       const files = Array.from(event.dataTransfer.files || []);
       const markdown = files.find(isMarkdownFile);
+      const imageFiles = markdown ? [] : imageFilesFromTransfer(event.dataTransfer);
       const markdownText = markdown ? "" : markdownTextFromTransfer(event.dataTransfer);
-      const directoryItem = markdown ? null : findDirectoryTransferItem(event.dataTransfer);
-      if (!markdown && !markdownText && !directoryItem) {
+      const imageUrl = markdown || imageFiles.length || markdownText ? "" : imageUrlFromTransfer(event.dataTransfer);
+      const directoryItem = markdown || imageFiles.length || imageUrl ? null : findDirectoryTransferItem(event.dataTransfer);
+      if (!markdown && !imageFiles.length && !markdownText && !imageUrl && !directoryItem) {
         hideDropHint();
         return;
       }
@@ -911,9 +1130,17 @@
         await importFile(markdown, "drop");
         return;
       }
+      if (imageFiles.length) {
+        await uploadDroppedImages(imageFiles);
+        return;
+      }
       if (markdownText) {
         await ensureEditorReadyForFileImport();
         await importMarkdown(markdownText, "drop");
+        return;
+      }
+      if (imageUrl) {
+        await uploadDroppedImageUrl(imageUrl);
         return;
       }
       try {
@@ -959,11 +1186,13 @@
     if (hasMarkdownText(dataTransfer)) return true;
     const types = Array.from(dataTransfer?.types || []);
     if (types.includes("text/plain") || types.includes("text/markdown")) return true;
+    if (transferMayContainImageUrl(dataTransfer)) return true;
     if (!hasFiles(dataTransfer)) return false;
     const files = Array.from(dataTransfer.files || []);
     if (files.some(isMarkdownFile)) return true;
+    if (files.some(isImageFile)) return true;
     const items = Array.from(dataTransfer.items || []);
-    return items.some(isLikelyMarkdownTransferItem) || items.some(isDirectoryTransferItem) || items.some((item) => item?.kind === "file");
+    return items.some(isLikelyMarkdownTransferItem) || items.some(isLikelyImageTransferItem) || items.some(isDirectoryTransferItem);
   }
 
   function isLikelyMarkdownTransferItem(item) {
@@ -995,7 +1224,7 @@
     }
   }
 
-  function showDropHint(dataTransfer = null) {
+  function showDropHint(dataTransfer = null, event = null) {
     const mode = dropHintMode(dataTransfer);
     let hint = document.getElementById(DROP_HINT_ID);
     if (!hint) {
@@ -1008,20 +1237,27 @@
         <p></p>
         <div class="__xposter_drop_slots">
           <span data-slot="markdown">Markdown</span>
+          <span data-slot="image">Image</span>
           <span data-slot="folder">Image folder</span>
         </div>
       `;
       injectDropHintStyle();
       document.body.appendChild(hint);
     }
+    if (event) positionDropHint(hint, event);
     hint.dataset.mode = mode;
     const title = hint.querySelector("strong");
     const detail = hint.querySelector("p");
-    if (title) title.textContent = mode === "folder" ? "Drop image folder here" : "Drop Markdown here";
+    if (title) {
+      title.textContent =
+        mode === "folder" ? "Drop image folder here" : mode === "image" ? "Drop image into article" : "Drop Markdown here";
+    }
     if (detail) {
       detail.textContent =
         mode === "folder"
           ? "xPoster will remember this folder for local image paths. It will not import the article yet."
+          : mode === "image"
+            ? "xPoster will hand the image file to X's own uploader and insert it into the open article."
           : "xPoster will create or use the open X Article, then show each import step.";
     }
   }
@@ -1030,11 +1266,33 @@
     document.getElementById(DROP_HINT_ID)?.remove();
   }
 
+  function positionDropHint(hint, event) {
+    const width = Math.min(420, Math.max(280, window.innerWidth - 44));
+    const height = 188;
+    const margin = 14;
+    const minLeft = margin;
+    const maxLeft = Math.max(minLeft, window.innerWidth - width - margin);
+    const minTop = margin;
+    const maxTop = Math.max(minTop, window.innerHeight - height - margin);
+    const left = Math.min(maxLeft, Math.max(minLeft, event.clientX - width / 2));
+    const preferredTop = event.clientY + 24;
+    const fallbackTop = event.clientY - height - 24;
+    const top = preferredTop <= maxTop
+      ? Math.max(minTop, preferredTop)
+      : Math.min(maxTop, Math.max(minTop, fallbackTop));
+    hint.style.setProperty("--xposter-drop-left", `${left}px`);
+    hint.style.setProperty("--xposter-drop-top", `${top}px`);
+  }
+
   function dropHintMode(dataTransfer) {
     if (!dataTransfer) return "markdown";
     if (hasMarkdownText(dataTransfer)) return "markdown";
     const files = Array.from(dataTransfer.files || []);
     if (files.some(isMarkdownFile)) return "markdown";
+    if (files.some(isImageFile)) return "image";
+    const items = Array.from(dataTransfer.items || []);
+    if (items.some(isLikelyImageTransferItem)) return "image";
+    if (transferMayContainImageUrl(dataTransfer) || imageUrlFromTransfer(dataTransfer)) return "image";
     return findDirectoryTransferItem(dataTransfer) ? "folder" : "markdown";
   }
 
@@ -1046,24 +1304,27 @@
       #${DROP_HINT_ID} {
         position: fixed;
         z-index: 2147483646;
-        left: 50%;
-        top: 50%;
-        width: min(520px, calc(100vw - 44px));
-        min-height: 214px;
-        transform: translate(-50%, -50%);
+        left: var(--xposter-drop-left, 22px);
+        top: var(--xposter-drop-top, 96px);
+        width: min(420px, calc(100vw - 44px));
+        min-height: 188px;
+        transform: translateY(0);
         display: grid;
         align-content: center;
         gap: 12px;
-        padding: 24px;
+        padding: 20px;
         border: 2px solid #2f6f68;
         background:
+          linear-gradient(110deg, transparent 0 24%, rgba(47, 111, 104, 0.15) 42%, transparent 62%),
           linear-gradient(135deg, rgba(47, 111, 104, 0.11), rgba(251, 250, 247, 0.96) 42%),
           #fbfaf7;
+        background-size: 190% 100%, auto, auto;
         color: #201f1b;
         box-shadow: 0 28px 76px rgba(32, 31, 27, 0.28);
         font: 14px/1.45 ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;
         letter-spacing: 0;
         pointer-events: none;
+        animation: __xposter_drop_in 220ms cubic-bezier(0.22, 1, 0.36, 1) both, __xposter_drop_sweep 2.8s linear infinite;
       }
       #${DROP_HINT_ID}::before {
         content: "";
@@ -1110,10 +1371,24 @@
         text-transform: uppercase;
       }
       #${DROP_HINT_ID}[data-mode="markdown"] [data-slot="markdown"],
+      #${DROP_HINT_ID}[data-mode="image"] [data-slot="image"],
       #${DROP_HINT_ID}[data-mode="folder"] [data-slot="folder"] {
         border-color: #2f6f68;
         background: #2f6f68;
         color: #f8fbf8;
+      }
+      @keyframes __xposter_drop_in {
+        from { opacity: 0; transform: translateY(-8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes __xposter_drop_sweep {
+        from { background-position: 160% 0, 0 0, 0 0; }
+        to { background-position: -60% 0, 0 0, 0 0; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #${DROP_HINT_ID} {
+          animation: none;
+        }
       }
     `;
     document.head.appendChild(style);

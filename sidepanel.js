@@ -248,6 +248,7 @@ console.log("示例代码块");
   let activeDraftFingerprint = null;
   let activeDraftFinalized = false;
   let draftInputHistoryTimer = null;
+  let suppressNextTypedHistory = false;
   let remoteImageAccessStatus = { origins: [], available: [], missing: [], checkedAt: null };
   let remoteImageProbeStatus = { state: "idle", total: 0, ok: 0, fail: 0, results: [], checkedAt: null };
 
@@ -488,20 +489,26 @@ console.log("示例代码块");
       Open: "打开",
       Preview: "预览",
       Pending: "待发布",
-      "Publish records": "发布记录",
-      "Publish history": "发布历史",
+      "Publish records": "记录",
+      "Publish history": "记录",
       Verify: "验证",
       Records: "记录",
       Settings: "设置",
-      "No publish record yet": "还没有发布记录",
-      "Write a Markdown draft into X Article. The latest result and activity will appear here.": "把 Markdown 草稿写入 X 文章后，这里会显示最近结果和动态。",
-      "No saved records yet.": "还没有保存记录。",
-      "Write or check an article to create the first record.": "写入或检查文章后会生成第一条记录。",
-      "local record(s), newest first.": "条本地记录，最新在前。",
+      "No publish record yet": "还没有记录",
+      "No records yet": "还没有记录",
+      "Write a Markdown draft into X Article. The latest result and activity will appear here.": "载入 Markdown、检查 X 或写入文章后，这里会显示每一步记录。",
+      "Load Markdown, check X, or write an article. Each step will appear here.": "载入 Markdown、检查 X 或写入文章后，每一步都会显示在这里。",
+      "No saved records yet.": "还没有记录。",
+      "No records yet.": "还没有记录。",
+      "Write or check an article to create the first record.": "载入 Markdown、检查或写入文章后会生成第一条记录。",
+      "Load Markdown, run Check, or Write article to create the first record.": "载入 Markdown、运行检查或写入文章后会生成第一条记录。",
+      "record(s), newest first.": "条记录，最新在前。",
+      "local record(s), newest first.": "条记录，最新在前。",
       "Draft loaded": "草稿已载入",
       "Draft ready": "草稿待发布",
       "Draft updated": "草稿已更新",
       "Loaded draft": "已载入草稿",
+      "Markdown loaded": "Markdown 已载入",
       "Article URL": "文章地址",
       "Page URL": "网页地址",
       "Open article": "打开文章",
@@ -517,6 +524,7 @@ console.log("示例代码块");
       "Typed draft": "手写草稿",
       Blocks: "块",
       Step: "阶段",
+      Result: "结果",
       "Technical details": "技术详情",
       "Import completed": "写入完成",
       "Import failed": "写入失败",
@@ -530,6 +538,9 @@ console.log("示例代码块");
       Blocked: "已阻断",
       "Check found blockers": "检查发现阻断项",
       Saved: "已保存",
+      "Ready to write": "可写入",
+      "Checked": "已检查",
+      "Image check": "图片检查",
       Kind: "类型",
       Target: "目标",
       Images: "图片",
@@ -538,7 +549,8 @@ console.log("示例代码块");
       "Not run": "未运行",
       "Target not locked": "未锁定目标",
       "No image upload result": "没有图片上传结果",
-      "Publish records cleared.": "发布记录已清空。",
+      "Publish records cleared.": "记录已清空。",
+      "Records cleared.": "记录已清空。",
       "Markdown draft": "Markdown 草稿",
       "Choose Markdown file": "选择 Markdown 文件",
       "Load live smoke fixture": "加载实时烟测草稿",
@@ -1113,7 +1125,8 @@ console.log("示例代码块");
       "No check or import saved yet.": "尚未保存检查或导入记录。",
       "No local record saved yet.": "还没有本地记录。",
       "Open this when you need a local record.": "需要本地记录时再打开。",
-      "Write an article to save a local record.": "写入文章后会保存本地记录。",
+      "Write an article to save a local record.": "检查或写入文章后会保存详细记录。",
+      "Run Check or Write article to save a detailed record.": "运行检查或写入文章后会保存详细记录。",
       "Import behavior": "导入行为",
       "Settings": "设置",
       "Full capability mode": "完整能力模式",
@@ -1444,7 +1457,8 @@ console.log("示例代码块");
       [/^(\d+)\/(\d+) stage\(s\) complete$/, "$1/$2 个阶段完成"],
       [/^(\d+) blocker\(s\), (\d+)\/(\d+) proven$/, "$1 个阻塞项，$2/$3 已证明"],
       [/^(\d+) pending item\(s\), (\d+)\/(\d+) proven$/, "$1 个待处理项，$2/$3 已证明"],
-      [/^(\d+) local record\(s\), newest first\.$/, "$1 条本地记录，最新在前。"],
+      [/^(\d+) local record\(s\), newest first\.$/, "$1 条记录，最新在前。"],
+      [/^(\d+) record\(s\), newest first\.$/, "$1 条记录，最新在前。"],
       [/^(\d+) live event\(s\); import complete\.$/, "$1 个实时事件；导入完成。"],
       [/^(\d+) live event\(s\); import failed\.$/, "$1 个实时事件；导入失败。"],
       [/^(\d+) live event\(s\); import in progress\.$/, "$1 个实时事件；导入中。"],
@@ -1465,7 +1479,8 @@ console.log("示例代码块");
       [/^(\d+) upload item need X handler\.$/, "$1 个上传项需要 X 处理器。"],
       [/^(\d+) upload items ready\.$/, "$1 个上传项就绪。"],
       [/^(\d+) upload item ready\.$/, "$1 个上传项就绪。"],
-      [/^(\d+) image\(s\) ready, (\d+) need attention$/, "$1 张图片已就绪，$2 张需要处理"],
+      [/^(\d+) image\(s\) uploaded, (\d+) kept as links$/, "$1 张图片已上传，$2 张保留为链接"],
+      [/^(\d+) image\(s\) ready, (\d+) need attention$/, "$1 张图片已就绪，$2 张保留为链接"],
       [/^(\d+) image\(s\) uploaded$/, "$1 张图片已上传"],
       [/^(\d+) upload items need the X editor\.$/, "$1 个上传项需要 X 编辑器。"],
       [/^(\d+) upload item need the X editor\.$/, "$1 个上传项需要 X 编辑器。"],
@@ -1638,7 +1653,8 @@ console.log("示例代码块");
       [/^(\d+) 个阶段阻塞，(\d+) 个完成$/, "$1 blocked stage(s), $2 complete"],
       [/^(\d+) 个阻塞项，(\d+)\/(\d+) 已证明$/, "$1 blocker(s), $2/$3 proven"],
       [/^(\d+) 个待处理项，(\d+)\/(\d+) 已证明$/, "$1 pending item(s), $2/$3 proven"],
-      [/^(\d+) 条本地记录，最新在前。$/, "$1 local record(s), newest first."],
+      [/^(\d+) 条本地记录，最新在前。$/, "$1 record(s), newest first."],
+      [/^(\d+) 条记录，最新在前。$/, "$1 record(s), newest first."],
       [/^(\d+) 个实时事件；导入完成。$/, "$1 live event(s); import complete."],
       [/^(\d+) 个实时事件；导入失败。$/, "$1 live event(s); import failed."],
       [/^(\d+) 个实时事件；导入中。$/, "$1 live event(s); import in progress."],
@@ -1646,7 +1662,8 @@ console.log("示例代码块");
       [/^(\d+) 个块，已检测标题$/, "$1 blocks, titled"],
       [/^(\d+) 个上传项需要 X 处理器。$/, "$1 upload items need X handler."],
       [/^(\d+) 个上传项就绪。$/, "$1 upload items ready."],
-      [/^(\d+) 张图片已就绪，(\d+) 张需要处理$/, "$1 image(s) ready, $2 need attention"],
+      [/^(\d+) 张图片已上传，(\d+) 张保留为链接$/, "$1 image(s) uploaded, $2 kept as links"],
+      [/^(\d+) 张图片已就绪，(\d+) 张需要处理$/, "$1 image(s) ready, $2 kept as links"],
       [/^(\d+) 张图片已上传$/, "$1 image(s) uploaded"],
       [/^还有 (\d+) 个导入项$/, "$1 more import item(s)"],
       [/^还有 (\d+) 个账本项$/, "$1 more ledger item(s)"],
@@ -1994,6 +2011,10 @@ console.log("示例代码块");
     return labels[source] || "Draft";
   }
 
+  function newRecordId(prefix = "record") {
+    return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
   function buildDraftHistoryEvidence(source = "typed", extra = {}) {
     const markdown = els.markdown.value || "";
     const parsed = latestParsed || ensureLatestParsedFromDraft();
@@ -2003,10 +2024,11 @@ console.log("示例代码块");
     const fingerprint = draftFingerprint(markdown);
     const now = new Date().toISOString();
     return {
+      id: extra.recordId || newRecordId("draft-record"),
       kind: "draft-loaded",
       capturedAt: now,
       updatedAt: now,
-      draftRecordId: activeDraftRecordId,
+      draftRecordId: extra.draftRecordId || activeDraftRecordId,
       draftFingerprint: fingerprint,
       source: {
         type: source,
@@ -2040,13 +2062,17 @@ console.log("示例代码块");
     if (!markdown.trim() || !latestParsed?.segments?.length) return null;
     const { forceNew = false, ...details } = extra || {};
     const fingerprint = draftFingerprint(markdown);
-    if (forceNew || activeDraftFinalized || !activeDraftRecordId) {
-      activeDraftRecordId = `draft-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const shouldCreateDraft = forceNew || activeDraftFinalized || !activeDraftRecordId;
+    if (shouldCreateDraft) {
+      activeDraftRecordId = newRecordId("draft");
       activeDraftFinalized = false;
     }
     activeDraftFingerprint = fingerprint;
+    const previous = currentDraftRecord(activeDraftRecordId);
+    const recordId = forceNew || !previous ? newRecordId("draft-record") : previous.id;
     const evidence = buildDraftHistoryEvidence(source, {
       ...details,
+      recordId,
       draftRecordId: activeDraftRecordId,
       draftFingerprint: fingerprint
     });
@@ -2056,7 +2082,7 @@ console.log("示例代码块");
 
   function ensureActiveDraftRecordId() {
     if (activeDraftRecordId) return activeDraftRecordId;
-    activeDraftRecordId = `draft-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    activeDraftRecordId = newRecordId("draft");
     activeDraftFingerprint = draftFingerprint(els.markdown.value || "");
     activeDraftFinalized = false;
     return activeDraftRecordId;
@@ -5046,11 +5072,29 @@ console.log("示例代码块");
   function installDraftDropTray() {
     if (!els.draftPanel) return;
     let dragDepth = 0;
+    const positionDraftDropTray = (event) => {
+      const rect = els.draftPanel.getBoundingClientRect();
+      const trayWidth = Math.min(300, Math.max(160, rect.width - 28));
+      const trayHeight = 72;
+      const minX = trayWidth / 2 + 8;
+      const maxX = Math.max(minX, rect.width - trayWidth / 2 - 8);
+      const minY = 116;
+      const maxY = Math.max(minY, rect.height - trayHeight - 20);
+      const x = Math.min(maxX, Math.max(minX, event.clientX - rect.left));
+      const y = Math.min(maxY, Math.max(minY, event.clientY - rect.top + 22));
+      els.draftPanel.style.setProperty("--drop-x", `${x}px`);
+      els.draftPanel.style.setProperty("--drop-y", `${y}px`);
+    };
+    const clearDraftDropTrayPosition = () => {
+      els.draftPanel.style.removeProperty("--drop-x");
+      els.draftPanel.style.removeProperty("--drop-y");
+    };
     document.addEventListener("dragenter", (event) => {
       if (!hasMarkdownTransfer(event.dataTransfer)) return;
       dragDepth += 1;
       showWorkspacePanel("draft");
       setActiveJump("draft");
+      positionDraftDropTray(event);
       els.draftPanel.dataset.dropLabel = localizeText("Release to load Markdown");
       els.draftPanel.classList.add("drag-active");
       setDraftDropStatus("Release to load Markdown", "Release the file here. xPoster will load it into the draft box, not publish it.", "ready");
@@ -5060,6 +5104,7 @@ console.log("示例代码块");
       event.preventDefault();
       event.dataTransfer.dropEffect = "copy";
       showWorkspacePanel("draft");
+      positionDraftDropTray(event);
       els.draftPanel.classList.add("drag-active");
       setDraftDropStatus("Release to load Markdown", "Release the file here. xPoster will load it into the draft box, not publish it.", "ready");
     }, true);
@@ -5067,6 +5112,7 @@ console.log("示例代码块");
       dragDepth = Math.max(0, dragDepth - 1);
       if (!dragDepth) {
         els.draftPanel.classList.remove("drag-active");
+        clearDraftDropTrayPosition();
         setDraftDropStatus(
           latestParsed?.segments?.length ? "Markdown loaded" : "Ready for Markdown",
           latestParsed?.segments?.length
@@ -5082,6 +5128,7 @@ console.log("示例代码块");
       event.stopPropagation();
       dragDepth = 0;
       els.draftPanel.classList.remove("drag-active");
+      clearDraftDropTrayPosition();
       setDraftDropStatus("Reading Markdown...", "Loading the dropped content into the draft box.", "ready");
       const file = Array.from(event.dataTransfer.files || []).find((item) => /\.(md|markdown|mdown|mkd|txt)$/i.test(item.name || ""));
       if (file) {
@@ -5225,7 +5272,7 @@ console.log("示例代码块");
     const gate = getImportGate(checks);
     const targetContext = payload?.targetContext || buildTargetContextEvidence();
     latestEvidence = {
-      id: activeDraftRecordId || null,
+      id: newRecordId(kind.replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "record"),
       kind,
       capturedAt: new Date().toISOString(),
       draftRecordId: activeDraftRecordId || null,
@@ -5274,16 +5321,21 @@ console.log("示例代码块");
 
   function addRecordHistoryEntry(evidence) {
     if (!evidence) return;
-    const previous = currentDraftRecord(evidence.draftRecordId || evidence.id);
+    const previous = currentRecord(evidence.id) || (evidence.kind === "draft-loaded" ? currentDraftRecord(evidence.draftRecordId) : null);
     const entry = normalizeRecordHistoryEntry(evidence, previous);
     recordHistory = [entry, ...recordHistory.filter((item) => item.id !== entry.id)].slice(0, MAX_RECORD_HISTORY);
     persistRecordHistory();
     renderRecordHistory();
   }
 
-  function currentDraftRecord(id = activeDraftRecordId) {
+  function currentRecord(id) {
     if (!id) return null;
     return recordHistory.find((item) => item.id === id) || null;
+  }
+
+  function currentDraftRecord(id = activeDraftRecordId) {
+    if (!id) return null;
+    return recordHistory.find((item) => item.kind === "draft-loaded" && item.draftRecordId === id) || null;
   }
 
   function normalizeRecordHistoryEntry(evidence, previous = null) {
@@ -5301,20 +5353,28 @@ console.log("示例代码块");
     const articleId = target.articleId || main?.title?.articleId || main?.cover?.articleId || previous?.articleId || null;
     const url = articleUrlForRecord({ target, pageStatus, articleId, previousUrl: previous?.url });
     const source = evidence.source || previous?.source || null;
+    const draftRecordId = evidence.draftRecordId || previous?.draftRecordId || null;
+    const draftFingerprint = evidence.draftFingerprint || previous?.draftFingerprint || null;
+    const blocks = evidence.draft?.blocks || previous?.blocks || 0;
+    const characters = evidence.draft?.characters || previous?.characters || 0;
     return {
-      id: evidence.draftRecordId || evidence.id || previous?.id || `${capturedAt}-${kind}-${Math.random().toString(36).slice(2, 8)}`,
+      id: evidence.id || previous?.id || newRecordId(kind.replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "record"),
+      draftRecordId,
+      draftFingerprint,
       kind,
       capturedAt: previous?.capturedAt || capturedAt,
       updatedAt: evidence.updatedAt || capturedAt,
       title,
       status: recordStatusForEvidence(evidence),
       tone: recordToneForEvidence(evidence),
+      action: recordActionText(evidence),
+      result: recordResultText(evidence, { imageOk, imageFail, warnings, blocks, characters }),
       articleId,
       route: target.route || previous?.route || null,
       url,
       source,
-      blocks: evidence.draft?.blocks || previous?.blocks || 0,
-      characters: evidence.draft?.characters || previous?.characters || 0,
+      blocks,
+      characters,
       images: {
         ok: imageOk || previous?.images?.ok || 0,
         fail: imageFail || previous?.images?.fail || 0,
@@ -5358,8 +5418,8 @@ console.log("示例代码块");
   function formatRecordImageText(record) {
     if (record.images.warnings) {
       return currentLanguage === "zh"
-        ? `${record.images.ok} 张图片可用，${record.images.warnings} 项需要处理`
-        : `${record.images.ok} image(s) ready, ${record.images.warnings} need attention`;
+        ? `${record.images.ok} 张图片已上传，${record.images.warnings} 张保留为链接`
+        : `${record.images.ok} image(s) uploaded, ${record.images.warnings} kept as links`;
     }
     if (record.images.ok || record.images.fail) {
       return currentLanguage === "zh"
@@ -5369,8 +5429,60 @@ console.log("示例代码块");
     return currentLanguage === "zh" ? "还没有图片上传结果" : "No image upload result";
   }
 
+  function recordActionText(evidence) {
+    const kind = String(evidence.kind || "");
+    if (kind === "draft-loaded") return "Loaded Markdown";
+    if (kind === "import") return "Wrote article";
+    if (kind === "import-error") return "Tried to write article";
+    if (kind === "preflight") return "Checked X article";
+    if (kind === "preflight-blocked" || kind.includes("blocked")) return "Checked X article";
+    if (kind.includes("remote-image")) return "Checked web images";
+    return recordKindLabel(kind);
+  }
+
+  function recordResultText(evidence, stats = {}) {
+    const kind = String(evidence.kind || "");
+    if (kind === "draft-loaded") {
+      const blocks = stats.blocks || evidence.draft?.blocks || 0;
+      const characters = stats.characters || evidence.draft?.characters || 0;
+      return blocks
+        ? `${blocks} block(s), ${characters} character(s), ready to write.`
+        : `${characters} character(s), ready to write.`;
+    }
+    if (kind === "import") {
+      const warnings = Number(stats.warnings || 0);
+      if (warnings) return `Written into X; ${warnings} image/media item(s) stayed as links.`;
+      return "Written into X. Review it there before publishing.";
+    }
+    if (kind === "import-error") {
+      return evidence.result?.error || "Write failed. Open details before retrying.";
+    }
+    if (kind === "preflight") {
+      const blockers = Array.isArray(evidence.checks) ? evidence.checks.filter((check) => check.tone === "error").length : 0;
+      return blockers ? `${blockers} blocker(s) found before writing.` : "X article is ready for writing.";
+    }
+    if (kind === "preflight-blocked" || kind.includes("blocked")) {
+      return evidence.reason || "Blocked before writing. Open details for the fix.";
+    }
+    if (kind.includes("remote-image")) {
+      const probe = evidence.draft?.remoteImages?.probe || remoteImageProbeStatus;
+      return `${probe.ok || 0} ready, ${probe.fail || 0} will stay as Markdown links.`;
+    }
+    return "Saved.";
+  }
+
+  function recordSummaryItems(record) {
+    const items = [];
+    if (record.action) items.push(record.action);
+    if (record.blocks) items.push(currentLanguage === "zh" ? `${record.blocks} 个块` : `${record.blocks} blocks`);
+    if (record.remoteImages?.count) items.push(currentLanguage === "zh" ? `${record.remoteImages.count} 张网页图片` : `${record.remoteImages.count} web images`);
+    if (record.articleId) items.push(currentLanguage === "zh" ? `文章 ${record.articleId}` : `Article ${record.articleId}`);
+    else if (record.url) items.push(currentLanguage === "zh" ? "已记录网页地址" : "Page URL saved");
+    return items.slice(0, 4);
+  }
+
   function recordKindLabel(kind) {
-    if (kind === "draft-loaded") return "Loaded draft";
+    if (kind === "draft-loaded") return "Markdown loaded";
     if (kind === "import") return "Import completed";
     if (kind === "import-error") return "Import failed";
     if (kind === "preflight") return "Check result";
@@ -5380,13 +5492,13 @@ console.log("示例代码块");
   }
 
   function recordStatusForEvidence(evidence) {
-    if (evidence.kind === "draft-loaded") return "Draft ready";
+    if (evidence.kind === "draft-loaded") return "Ready to write";
     if (evidence.kind === "import") return "Written";
     if (evidence.kind === "import-error") return "Failed";
     if (evidence.kind === "preflight-blocked" || evidence.kind?.includes("blocked")) return "Blocked";
     if (evidence.kind === "preflight") {
       const blockers = Array.isArray(evidence.checks) ? evidence.checks.filter((check) => check.tone === "error").length : 0;
-      return blockers ? "Check found blockers" : "Check passed";
+      return blockers ? "Check found blockers" : "Checked";
     }
     if (evidence.kind?.includes("remote-image")) return "Image check";
     return "Saved";
@@ -5428,20 +5540,38 @@ console.log("示例代码块");
   function normalizeStoredRecordHistoryEntry(record) {
     if (!record || typeof record !== "object") return record;
     const evidence = record.evidence || {};
+    const normalizedEvidence = {
+      ...evidence,
+      id: evidence.id || record.id,
+      draftRecordId: evidence.draftRecordId || record.draftRecordId || record.id,
+      kind: evidence.kind || record.kind,
+      capturedAt: evidence.capturedAt || record.capturedAt,
+      updatedAt: evidence.updatedAt || record.updatedAt || record.capturedAt,
+      source: evidence.source || record.source || null,
+      draft: {
+        ...(evidence.draft || {}),
+        blocks: evidence.draft?.blocks || record.blocks || 0,
+        characters: evidence.draft?.characters || record.characters || 0,
+        remoteImages: evidence.draft?.remoteImages || record.remoteImages || null
+      },
+      targetContext: evidence.targetContext || {}
+    };
+    const normalized = normalizeRecordHistoryEntry(normalizedEvidence, record);
     return {
+      ...normalized,
       ...record,
-      updatedAt: record.updatedAt || evidence.updatedAt || record.capturedAt,
-      source: record.source || evidence.source || null,
-      blocks: record.blocks || evidence.draft?.blocks || 0,
-      characters: record.characters || evidence.draft?.characters || 0,
-      url: record.url || articleUrlForRecord({
-        target: evidence.targetContext || {},
-        pageStatus: evidence.pageStatus || {},
-        articleId: record.articleId,
-        previousUrl: null
-      }),
-      titleResult: record.titleResult || "Not run",
-      coverResult: record.coverResult || "Not run"
+      draftRecordId: record.draftRecordId || normalized.draftRecordId || evidence.draftRecordId || record.id,
+      draftFingerprint: record.draftFingerprint || normalized.draftFingerprint || evidence.draftFingerprint || null,
+      updatedAt: record.updatedAt || normalized.updatedAt,
+      action: record.action || normalized.action,
+      result: record.result || normalized.result,
+      source: record.source || normalized.source,
+      blocks: record.blocks || normalized.blocks,
+      characters: record.characters || normalized.characters,
+      url: record.url || normalized.url,
+      titleResult: record.titleResult || normalized.titleResult || "Not run",
+      coverResult: record.coverResult || normalized.coverResult || "Not run",
+      evidence: normalizedEvidence
     };
   }
 
@@ -5451,12 +5581,12 @@ console.log("示例代码块");
     if (els.recordHistory) els.recordHistory.hidden = false;
     if (els.recordHistoryMeta) {
       els.recordHistoryMeta.textContent = total
-        ? `${total} local record(s), newest first.`
-        : "No saved records yet.";
+        ? `${total} record(s), newest first.`
+        : "No records yet.";
     }
     if (els.clearRecordHistory) els.clearRecordHistory.disabled = total === 0;
     if (!total) {
-      els.recordHistoryList.innerHTML = `<li class="record-history-empty">Write or check an article to create the first record.</li>`;
+      els.recordHistoryList.innerHTML = `<li class="record-history-empty">Load Markdown, run Check, or Write article to create the first record.</li>`;
       syncRecordPanel();
       return;
     }
@@ -5482,6 +5612,10 @@ console.log("示例代码块");
       record.source?.fileName || ""
     ].filter(Boolean);
     const sourceText = sourceParts.join(": ");
+    const summaryItems = recordSummaryItems(record);
+    const summaryHtml = summaryItems.length
+      ? `<span class="record-summary">${summaryItems.map((item) => `<span>${safe(item)}</span>`).join("")}</span>`
+      : "";
     const articleUrl = record.url || "";
     const urlLabel = record.articleId || /\/compose\/articles\/edit\//.test(articleUrl) ? "Article URL" : "Page URL";
     const emptyUrlText = urlLabel === "Article URL" ? "No article URL yet" : "No page URL yet";
@@ -5496,7 +5630,8 @@ console.log("示例代码块");
             <span class="record-status">${safe(record.status)}</span>
             <span class="record-title">
               <strong>${safe(record.title)}</strong>
-              <em>${safe(sourceText)}</em>
+              <em>${safe(record.result || sourceText)}</em>
+              ${summaryHtml}
             </span>
             <time>${safe(updatedTime || time)}</time>
           </summary>
@@ -5508,6 +5643,7 @@ console.log("示例代码块");
             <dl>
               <div><dt>Source</dt><dd>${safe(sourceText)}</dd></div>
               <div><dt>Step</dt><dd>${safe(recordKindLabel(record.kind))}</dd></div>
+              <div><dt>Result</dt><dd>${safe(record.result || record.status)}</dd></div>
               <div><dt>Target</dt><dd>${safe(targetText)}</dd></div>
               <div><dt>Blocks</dt><dd>${safe(draftStats)}</dd></div>
               <div><dt>Images</dt><dd>${safe(imageText)}</dd></div>
@@ -5535,11 +5671,11 @@ console.log("示例代码块");
     window.clearTimeout(draftInputHistoryTimer);
     if (hasChromeApi()) await chrome.storage.local.remove(STORAGE_RECORD_HISTORY).catch(() => {});
     els.evidenceMeta.textContent = "No local record saved yet.";
-    els.evidenceText.textContent = "Write an article to save a local record.";
+    els.evidenceText.textContent = "Run a publishing check or import to save a record.";
     els.copyEvidence.disabled = true;
     renderRecordHistory();
     updateProgressiveSections();
-    log("Publish records cleared.");
+    log("Records cleared.");
   }
 
   function buildProofDeckEvidence(checks = null, gate = null) {
@@ -5952,7 +6088,21 @@ console.log("示例代码块");
   els.markdown.addEventListener("input", () => {
     saveDraft();
     analyzeDraft();
+    if (suppressNextTypedHistory) {
+      suppressNextTypedHistory = false;
+      return;
+    }
     scheduleDraftHistory("typed");
+  });
+  els.markdown.addEventListener("paste", () => {
+    suppressNextTypedHistory = true;
+    window.clearTimeout(draftInputHistoryTimer);
+    window.setTimeout(() => {
+      saveDraft();
+      analyzeDraft();
+      window.clearTimeout(draftInputHistoryTimer);
+      rememberDraftHistory("paste", { forceNew: true });
+    }, 0);
   });
   els.importDraft.addEventListener("click", runImportButtonAction);
   els.checkRemoteImages?.addEventListener("click", () => runRemoteImageCheckAction());

@@ -89,12 +89,21 @@
     );
     if (!fiberKey) return null;
     let fiber = editor[fiberKey];
-    for (let depth = 0; depth < 80 && fiber; depth += 1) {
+    for (let depth = 0; depth < 160 && fiber; depth += 1) {
       const props = fiber.memoizedProps || fiber.stateNode?.props;
       if (typeof props?.onFilesAdded === "function") return props.onFilesAdded;
+      const nested = findOnFilesAddedInFiberChildren(fiber.child, 0);
+      if (nested) return nested;
       fiber = fiber.return;
     }
     return null;
+  }
+
+  function findOnFilesAddedInFiberChildren(fiber, depth) {
+    if (!fiber || depth > 8) return null;
+    const props = fiber.memoizedProps || fiber.stateNode?.props;
+    if (typeof props?.onFilesAdded === "function") return props.onFilesAdded;
+    return findOnFilesAddedInFiberChildren(fiber.child, depth + 1) || findOnFilesAddedInFiberChildren(fiber.sibling, depth);
   }
 
   function pasteHtml(html, plain) {
@@ -365,6 +374,29 @@
     const bytes = new Uint8Array(binary.length);
     for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
     return new File([bytes], fileName, { type: mime });
+  }
+
+  function uploadFilesToEditor(filePayloads = []) {
+    const onFilesAdded = findOnFilesAdded();
+    if (!onFilesAdded) return { ok: false, error: "X upload handler was not reachable" };
+    const files = filePayloads
+      .filter((file) => file?.base64)
+      .map((file, index) =>
+        base64ToFile(
+          file.base64,
+          file.fileName || `image-${index + 1}.png`,
+          file.mime || "image/png"
+        )
+      );
+    if (!files.length) return { ok: false, error: "No image file data was provided" };
+    const editor = findEditorElement();
+    editor?.focus?.();
+    onFilesAdded(files);
+    return {
+      ok: true,
+      count: files.length,
+      files: files.map((file) => ({ name: file.name, type: file.type, size: file.size }))
+    };
   }
 
   function existingMediaEntities(contentState) {
@@ -888,6 +920,21 @@
         console.error(LOG, error);
         post("error", { error: error?.message || String(error), stack: error?.stack || null });
       });
+      return;
+    }
+    if (event.data.kind === "upload-files") {
+      try {
+        const result = uploadFilesToEditor(event.data.files || []);
+        if (result.ok) post("upload-files-done", { requestId: event.data.requestId, summary: result });
+        else post("upload-files-error", { requestId: event.data.requestId, error: result.error });
+      } catch (error) {
+        console.error(LOG, error);
+        post("upload-files-error", {
+          requestId: event.data.requestId,
+          error: error?.message || String(error),
+          stack: error?.stack || null
+        });
+      }
       return;
     }
     if (event.data.kind === "diagnostics") {

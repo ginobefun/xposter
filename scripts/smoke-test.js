@@ -107,6 +107,22 @@ assert.ok(
   "failed remote image fallback should not write internal permission errors into the article"
 );
 assert.ok(
+  fs.readFileSync(path.join(root, "src/content.js"), "utf8").includes('showStatus(formatCompletionMessage(summary), "done", 7000)'),
+  "successful Markdown writes should finish with a done status even when images stay as links"
+);
+assert.ok(
+  fs.readFileSync(path.join(root, "src/content.js"), "utf8").includes("uploadDroppedImageUrl"),
+  "content script should upload dropped web image URLs instead of only showing a drop hint"
+);
+assert.ok(
+  fs.readFileSync(path.join(root, "src/content.js"), "utf8").includes('data-slot="image"'),
+  "drop hint should expose an image drop mode"
+);
+assert.ok(
+  fs.readFileSync(path.join(root, "src/main-world.js"), "utf8").includes("uploadFilesToEditor"),
+  "main-world bridge should hand dropped image files to X's own uploader"
+);
+assert.ok(
   coverOnlyPlan.plan.some(
     (item) =>
       item.op.type === "image" &&
