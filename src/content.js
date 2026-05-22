@@ -300,7 +300,6 @@
       )
         ? { type: "image", source: coverSource, alt: "cover" }
         : null;
-      await ensureRemoteImageAccessForImport(segments, coverSegment);
 
       if (!(await waitForMainReady())) throw new Error("X editor bridge is not ready");
 
@@ -316,13 +315,6 @@
       const mediaFailures = collectMediaFailures(imageMap, "image")
         .concat(coverResult && !coverResult.ok ? collectMediaFailures(new Map([[coverSegment, coverResult]]), "image") : [])
         .concat(collectMediaFailures(tableMap, "table"));
-      const remoteImageFailures = mediaFailures.filter(isRemoteImageFailure);
-      if (remoteImageFailures.length) {
-        await openSidePanelForRemoteImages();
-        const error = new Error(formatRemoteImagePreparationError(remoteImageFailures));
-        error.mediaFailures = remoteImageFailures;
-        throw error;
-      }
       const pastePlan = shared.buildPastePlan(segments, imageMap, tableMap, {
         coverSource,
         coverResult
@@ -377,73 +369,8 @@
     }
   }
 
-  async function ensureRemoteImageAccessForImport(segments, coverSegment = null) {
-    const remoteImages = uniqueRemoteImageSegments(segments, coverSegment);
-    if (!remoteImages.length) return { ok: true, total: 0 };
-    const origins = Array.from(
-      new Set(
-        remoteImages
-          .map((segment) => imageOrigin(segment.source))
-          .filter(Boolean)
-      )
-    );
-    if (!origins.length) return { ok: true, total: remoteImages.length };
-    let status = null;
-    try {
-      status = await chrome.runtime.sendMessage({
-        type: "xposter:remote-image-permission-status",
-        origins
-      });
-    } catch (error) {
-      status = { ok: false, error: error?.message || String(error), missing: origins };
-    }
-    const missing = status?.missing?.length ? status.missing : [];
-    if (!missing.length) return { ok: true, total: remoteImages.length, origins };
-    await openSidePanelForRemoteImages();
-    const hostList = missing.map(hostLabel).join(", ");
-    const error = new Error(
-      `${remoteImages.length} web image(s) need one Chrome permission before xPoster can upload them. The side panel is open: click Allow image website for ${hostList}, then Write article again.`
-    );
-    error.permissionRequired = true;
-    error.mediaFailures = remoteImages.map((segment, index) => ({
-      kind: "image",
-      index: index + 1,
-      source: segment.source,
-      origin: imageOrigin(segment.source),
-      fileName: shared.guessFileName(segment.source, `image-${index + 1}`),
-      error: "Chrome image-site permission required",
-      permissionRequired: true
-    }));
-    throw error;
-  }
-
-  function uniqueRemoteImageSegments(segments, coverSegment = null) {
-    const seen = new Set();
-    return (segments || [])
-      .concat(coverSegment ? [coverSegment] : [])
-      .filter((segment) => segment?.type === "image" && isRemoteHttpImageSource(segment.source))
-      .filter((segment) => {
-        const key = String(segment.source || "");
-        if (!key || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-  }
-
-  function isRemoteImageFailure(failure) {
-    return failure?.kind === "image" && isRemoteHttpImageSource(failure.source);
-  }
-
   function isRemoteHttpImageSource(source) {
     return /^https?:\/\//i.test(String(source || "").trim());
-  }
-
-  function formatRemoteImagePreparationError(failures) {
-    const first = failures[0] || {};
-    const count = failures.length || 1;
-    const origin = first.origin || imageOrigin(first.source) || "the image website";
-    const fileName = first.fileName || shared.guessFileName(first.source || "", "image");
-    return `${count} web image(s) could not be downloaded for upload. First failed: ${fileName} from ${origin}. ${first.error || "Image download failed"} The article was not written yet, so the image links do not become a broken draft. Open the side panel, allow the image website or replace the image URL, then Write article again.`;
   }
 
   async function openSidePanelForRemoteImages() {
@@ -592,10 +519,6 @@
     return /fetch failed|timed out|timeout|network|HTTP 429|HTTP 500|HTTP 502|HTTP 503|HTTP 504/i.test(String(error || ""));
   }
 
-  function remoteImagePermissionMessage(origin) {
-    return `Chrome has not allowed xPoster to read images from ${origin || "this image website"} yet. The article can still be written; this image will stay as a Markdown image link until the site is allowed from the side panel.`;
-  }
-
   async function loadImage(source, fallbackName) {
     if (source.startsWith("data:")) {
       const parsed = shared.parseDataUri(source);
@@ -611,11 +534,8 @@
       if (!result?.ok) {
         return {
           ok: false,
-          error: result?.permissionRequired
-            ? remoteImagePermissionMessage(result.origin || imageOrigin(source))
-            : result?.error || "Image fetch failed",
+          error: result?.error || "Image fetch failed",
           source,
-          permissionRequired: Boolean(result?.permissionRequired),
           origin: result?.origin || imageOrigin(source)
         };
       }
@@ -671,8 +591,7 @@
         source: segment?.source || null,
         origin: imageOrigin(segment?.source),
         fileName: shared.guessFileName(segment?.source || "", `${kind}-${index}`),
-        error: value?.error || `${kind} preparation failed`,
-        permissionRequired: Boolean(value?.permissionRequired)
+        error: value?.error || `${kind} preparation failed`
       });
     }
     return failures;
@@ -683,10 +602,9 @@
       (summary, failure) => {
         if (failure.kind === "table") summary.tables += 1;
         else summary.images += 1;
-        if (failure.permissionRequired) summary.permissionRequired += 1;
         return summary;
       },
-      { images: 0, tables: 0, permissionRequired: 0 }
+      { images: 0, tables: 0 }
     );
     return {
       total: failures.length,
@@ -708,7 +626,7 @@
       }
       if (skippedTables) parts.push(`${skippedTables} table(s) kept as Markdown`);
       const recovery = skippedImages
-        ? " Allow the image website in xPoster, then write again to upload them."
+        ? " Check downloads in xPoster or replace unreachable image URLs with public links."
         : "";
       return `Article written${elapsed}. ${parts.join("; ")}.${recovery}`;
     }

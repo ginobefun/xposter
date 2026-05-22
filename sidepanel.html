@@ -199,17 +199,17 @@
           <p id="remotePermissionMeta">No remote image URLs detected.</p>
         </div>
         <ol class="remote-permission-steps" id="remotePermissionSteps" aria-label="Remote image steps">
-          <li data-remote-step="allow" data-tone="warn">
+          <li data-remote-step="detect" data-tone="warn">
             <strong>1</strong>
-            <span>Allow site</span>
+            <span>Detect links</span>
           </li>
           <li data-remote-step="check" data-tone="idle">
             <strong>2</strong>
-            <span>Try upload</span>
+            <span>Check downloads</span>
           </li>
           <li data-remote-step="import" data-tone="idle">
             <strong>3</strong>
-            <span>Write again</span>
+            <span>Write article</span>
           </li>
         </ol>
         <ol id="remotePermissionList" class="remote-permission-list">
@@ -218,14 +218,12 @@
             <span>No remote image URLs detected.</span>
           </li>
         </ol>
-        <div class="remote-explainer" aria-label="Why Chrome asks for image website access">
-          <p><strong>Why:</strong> these Markdown images live on another website.</p>
-          <p><strong>Option:</strong> allow that image website, then write again so xPoster can upload them.</p>
-          <p><strong>Fallback:</strong> if Chrome still cannot read them, xPoster keeps the Markdown links in the article.</p>
+        <div class="remote-explainer" aria-label="How web images are handled">
+          <p><strong>What happens:</strong> xPoster downloads public web images in the extension background, then lets X upload them.</p>
+          <p><strong>Fallback:</strong> private, expired, blocked, or unreachable images stay as Markdown links in the article.</p>
         </div>
         <div class="remote-permission-actions" id="remotePermissionActions">
-          <button class="secondary compact" id="allowRemoteImages" type="button">Allow image website</button>
-          <button class="secondary compact" id="checkRemoteImages" type="button" disabled>Try image upload</button>
+          <button class="secondary compact" id="checkRemoteImages" type="button" disabled>Check downloads</button>
         </div>
       </section>
 
@@ -922,10 +920,10 @@
         </div>
         <div class="setting-row">
           <div>
-            <strong>Web image permission</strong>
-            <span>Remote image links may ask once for Chrome approval before xPoster can upload them into X.</span>
+            <strong>Web image handling</strong>
+            <span>xPoster tries public image downloads in the background; failed downloads stay as Markdown links.</span>
           </div>
-          <span class="setting-value">Ask first</span>
+          <span class="setting-value">Auto</span>
         </div>
         <div class="setting-row">
           <div>

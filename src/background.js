@@ -13,21 +13,14 @@ chrome.runtime.onInstalled.addListener(async () => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "xposter:fetch-image") {
-    fetchImage(message.url, sender)
+    fetchImage(message.url)
       .then(sendResponse)
       .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
   }
 
   if (message?.type === "xposter:probe-image") {
-    probeImage(message.url, sender)
-      .then(sendResponse)
-      .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
-    return true;
-  }
-
-  if (message?.type === "xposter:remote-image-permission-status") {
-    remoteImagePermissionStatus(message)
+    probeImage(message.url)
       .then(sendResponse)
       .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }));
     return true;
@@ -108,16 +101,14 @@ async function openArticles() {
   return { ok: true, tabId: created.id || null };
 }
 
-async function fetchImage(url, sender = {}) {
+async function fetchImage(url) {
   if (!url || typeof url !== "string") return { ok: false, error: "Invalid image URL" };
   if (url.startsWith("data:")) return parseDataUri(url);
   if (!/^https?:\/\//i.test(url)) return { ok: false, error: "Unsupported image scheme" };
-  const permission = await ensureRemoteImagePermission(url, sender);
-  if (!permission.ok) return permission;
   return readRemoteImagePayload(url);
 }
 
-async function probeImage(url, sender = {}) {
+async function probeImage(url) {
   if (!url || typeof url !== "string") return { ok: false, error: "Invalid image URL" };
   if (url.startsWith("data:")) {
     const parsed = parseDataUri(url);
@@ -126,8 +117,6 @@ async function probeImage(url, sender = {}) {
       : parsed;
   }
   if (!/^https?:\/\//i.test(url)) return { ok: false, error: "Unsupported image scheme" };
-  const permission = await ensureRemoteImagePermission(url, sender);
-  if (!permission.ok) return permission;
 
   const payload = await readRemoteImagePayload(url);
   if (!payload.ok) return payload;
@@ -343,93 +332,14 @@ function remoteImageFetchError(url, reason, status = null, details = {}) {
     status === 404 ||
     /fetch failed|network|SSL|timed out|timeout/i.test(normalized);
   const hint = unavailable
-    ? `xPoster has permission, but Chrome could not download this image from ${origin}. The signed image URL may be private, expired, blocked, or temporarily unreachable.${details.retriedSignedUrl ? " xPoster also retried this COS-style signed URL without unsigned response-* query parameters." : ""} Open the image URL in a normal tab; if it does not load there, regenerate a public image link and click Check downloads again.`
-    : `xPoster has permission, but ${origin} did not return a usable image file.`;
+    ? `Chrome could not download this image from ${origin}. The signed image URL may be private, expired, blocked, or temporarily unreachable.${details.retriedSignedUrl ? " xPoster also retried this COS-style signed URL without unsigned response-* query parameters." : ""} Open the image URL in a normal tab; if it does not load there, regenerate a public image link and click Check downloads again.`
+    : `${origin} did not return a usable image file.`;
   return {
     ok: false,
     status,
     origin,
     error: `${normalized}. ${hint}`
   };
-}
-
-async function ensureRemoteImagePermission(url, sender = {}) {
-  let origin = "";
-  try {
-    origin = new URL(url).origin;
-  } catch {
-    return { ok: false, error: "Invalid image URL" };
-  }
-  if (await remoteOriginAllowed(origin)) return { ok: true };
-  const all = await chrome.permissions.getAll?.().catch(() => null);
-  const tabId = sender.tab?.id || null;
-  return {
-    ok: false,
-    permissionRequired: true,
-    origin,
-    tabId,
-    grantedOrigins: all?.origins || [],
-    error: `Chrome has not granted image-site access for ${origin}. The article can still be written; this Markdown image link will stay as text until the image website is allowed from the xPoster side panel.`
-  };
-}
-
-async function remoteImagePermissionStatus(message = {}) {
-  const inputs = Array.isArray(message.origins) && message.origins.length
-    ? message.origins
-    : [message.origin || message.url].filter(Boolean);
-  const origins = Array.from(new Set(inputs.map(remoteImageOrigin).filter(Boolean)));
-  const all = await chrome.permissions.getAll?.().catch(() => null);
-  const statuses = await Promise.all(
-    origins.map(async (origin) => ({
-      origin,
-      allowed: await remoteOriginAllowed(origin)
-    }))
-  );
-  return {
-    ok: true,
-    version: chrome.runtime.getManifest().version,
-    origins,
-    granted: statuses.filter((item) => item.allowed).map((item) => item.origin),
-    missing: statuses.filter((item) => !item.allowed).map((item) => item.origin),
-    grantedOrigins: all?.origins || []
-  };
-}
-
-function remoteImageOrigin(input) {
-  try {
-    const parsed = new URL(String(input || ""));
-    if (parsed.protocol === "http:" || parsed.protocol === "https:") return parsed.origin;
-  } catch {}
-  try {
-    const parsed = new URL(`${String(input || "").replace(/\/+$/, "")}/`);
-    if (parsed.protocol === "http:" || parsed.protocol === "https:") return parsed.origin;
-  } catch {}
-  return "";
-}
-
-function permissionOriginPattern(origin) {
-  return `${String(origin || "").replace(/\/+$/, "")}/*`;
-}
-
-function permissionPatternMatchesOrigin(pattern, origin) {
-  if (!pattern || !origin) return false;
-  if (pattern === "<all_urls>") return true;
-  const normalizedPattern = String(pattern).replace(/\/+$/, "");
-  const normalizedOrigin = String(origin).replace(/\/+$/, "");
-  if (normalizedPattern === normalizedOrigin || normalizedPattern === `${normalizedOrigin}/*`) return true;
-  try {
-    const patternUrl = new URL(normalizedPattern.replace(/\*.*$/, ""));
-    return patternUrl.origin === normalizedOrigin;
-  } catch {
-    return false;
-  }
-}
-
-async function remoteOriginAllowed(origin) {
-  const pattern = permissionOriginPattern(origin);
-  if (await chrome.permissions.contains({ origins: [pattern] }).catch(() => false)) return true;
-  const all = await chrome.permissions.getAll?.().catch(() => null);
-  return (all?.origins || []).some((grantedPattern) => permissionPatternMatchesOrigin(grantedPattern, origin));
 }
 
 function parseDataUri(uri) {

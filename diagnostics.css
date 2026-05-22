@@ -53,12 +53,15 @@ h1 {
 button {
   min-height: 38px;
   border: 0;
+  padding: 6px 10px;
   background: var(--signal);
   color: var(--paper);
   cursor: pointer;
   font: inherit;
   font-size: 13px;
   font-weight: 760;
+  line-height: 1.2;
+  white-space: normal;
 }
 
 button.secondary {
@@ -80,6 +83,7 @@ button:disabled {
 
 .summary div {
   min-width: 0;
+  min-height: 64px;
   padding: 10px;
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);

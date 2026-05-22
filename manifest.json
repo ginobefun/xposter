@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "xPoster",
   "description": "A refined Markdown publishing console for X Articles.",
-  "version": "1.41",
+  "version": "1.42",
   "minimum_chrome_version": "116",
   "action": {
     "default_title": "xPoster",
@@ -45,10 +45,6 @@
     }
   ],
   "host_permissions": [
-    "https://x.com/*",
-    "https://twitter.com/*"
-  ],
-  "optional_host_permissions": [
     "http://*/*",
     "https://*/*"
   ],

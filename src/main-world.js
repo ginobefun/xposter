@@ -864,8 +864,8 @@
             console.warn(LOG, "cover update failed", result);
           }
         } else {
-          summary.cover.skippedReason = "Cover source has no uploaded media match";
-          console.info(LOG, "cover skipped: no uploaded media match", payload.cover);
+          summary.cover.skippedReason = "Cover source was not uploaded; it may have stayed as a Markdown link";
+          console.info(LOG, "cover skipped because the source was not uploaded", payload.cover);
         }
       }
     }

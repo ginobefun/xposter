@@ -19,7 +19,6 @@
     remotePermissionPanel: document.getElementById("remotePermissionPanel"),
     remotePermissionMeta: document.getElementById("remotePermissionMeta"),
     remotePermissionList: document.getElementById("remotePermissionList"),
-    allowRemoteImages: document.getElementById("allowRemoteImages"),
     checkRemoteImages: document.getElementById("checkRemoteImages"),
     commandDock: document.querySelector(".command-dock"),
     dockGate: document.getElementById("dockGate"),
@@ -245,7 +244,11 @@ console.log("示例代码块");
   let targetLock = null;
   let latestProgress = createLiveProgressState();
   let currentLanguage = preferredLanguage();
-  let remotePermissionStatus = { origins: [], granted: [], missing: [], checkedAt: null };
+  let activeDraftRecordId = null;
+  let activeDraftFingerprint = null;
+  let activeDraftFinalized = false;
+  let draftInputHistoryTimer = null;
+  let remoteImageAccessStatus = { origins: [], available: [], missing: [], checkedAt: null };
   let remoteImageProbeStatus = { state: "idle", total: 0, ok: 0, fail: 0, results: [], checkedAt: null };
 
   const ZH_TEXT = new Map(
@@ -301,6 +304,10 @@ console.log("示例代码块");
       "Check article": "检查文章",
       "Check article": "检查文章",
       "What happens": "会发生什么",
+      "What happens:": "会发生什么：",
+      "How web images are handled": "网页图片如何处理",
+      "xPoster downloads public web images in the extension background, then lets X upload them.": "xPoster 会在扩展后台下载公开网页图片，然后交给 X 上传。",
+      "private, expired, blocked, or unreachable images stay as Markdown links in the article.": "私有、过期、受阻或无法访问的图片会在文章中保留为 Markdown 链接。",
       "Paste Markdown here, fill the open X Article there": "在这里粘贴 Markdown，填入当前 X 文章",
       "xPoster previews your draft first. When you click Import, it fills the active X Article editor, uploads images it can read, and then stops for your review.": "xPoster 会先预览草稿。点击导入后，它会填入当前 X 文章编辑器、上传能读取的图片，然后停下来让你检查。",
       Cost: "费用",
@@ -316,12 +323,14 @@ console.log("示例代码块");
       "Publishing control": "发布控制",
       "xPoster fills the editor only after Import. You still review and publish in X.": "只有点击导入后 xPoster 才会填入编辑器。仍由你在 X 中检查并发布。",
       "Import fills the editor. You still review and publish in X.": "导入只会填入编辑器。仍由你在 X 中检查并发布。",
-      "Image permission": "图片权限",
-      "Web images may need one Chrome approval for their image site before upload.": "网页图片上传前，可能需要你在 Chrome 中允许该图片网站一次。",
-      "Web image links may ask once for Chrome approval before upload.": "网页图片链接上传前，可能需要你在 Chrome 中允许一次。",
-      "Web image permission": "网页图片权限",
-      "Remote image links may ask once for Chrome approval before xPoster can upload them into X.": "远程图片链接可能需要一次 Chrome 允许，xPoster 才能上传到 X。",
-      "Ask first": "按需询问",
+      "Image permission": "图片处理",
+      "Web images may need one Chrome approval for their image site before upload.": "网页图片会自动尝试后台下载；失败时保留为 Markdown 链接。",
+      "Web image links may ask once for Chrome approval before upload.": "网页图片会自动尝试后台下载；失败时保留为 Markdown 链接。",
+      "Web image permission": "网页图片处理",
+      "Web image handling": "网页图片处理",
+      "xPoster tries public image downloads in the background; failed downloads stay as Markdown links.": "xPoster 会在后台尝试下载公开图片；下载失败的图片会保留为 Markdown 链接。",
+      "Remote image links may ask once for Chrome approval before xPoster can upload them into X.": "远程图片链接会在后台尝试下载；失败时保留为 Markdown 链接。",
+      "Ask first": "自动处理",
       "What xPoster does": "xPoster 做什么",
       "Turns your Markdown draft into an X Article": "把 Markdown 草稿变成 X 文章",
       "Paste your draft, open the X Article you want to fill, then let xPoster upload images and place the content. It never publishes for you.": "粘贴草稿，打开要填入内容的 X 文章，然后让 xPoster 上传图片并放置内容。它不会替你发布。",
@@ -329,15 +338,15 @@ console.log("示例代码块");
       "Free: no xPoster account, subscription, trial limit, or feature lock.": "免费：不需要 xPoster 账号、订阅，没有试用限制或功能锁。",
       "Local: your draft stays in this browser; xPoster has no server.": "本地处理：草稿留在这个浏览器里；xPoster 没有服务器。",
       "You publish: xPoster only fills the editor after you click Import.": "你来发布：只有点击导入后，xPoster 才会填入编辑器。",
-      "Image permission: web images may ask once for Chrome approval.": "图片权限：网页图片可能需要一次 Chrome 允许。",
+      "Image permission: web images may ask once for Chrome approval.": "图片处理：网页图片会自动尝试后台下载。",
       Connection: "连接状态",
       "X page": "X 页面",
       "Control: xPoster fills the editor only after you click Import; you still review and publish in X.": "控制权：只有点击导入后 xPoster 才会填入编辑器；仍由你在 X 中检查并发布。",
-      "Images: web image links may ask once for Chrome permission to read that image website.": "图片：网页图片链接可能需要你在 Chrome 中允许读取该图片网站一次。",
+      "Images: web image links may ask once for Chrome permission to read that image website.": "图片：网页图片会在后台尝试下载；失败时保留链接。",
       "Next step": "下一步",
-      "Remote images need one Chrome approval": "远程图片需要一次 Chrome 允许",
-      "Web images can upload after one Chrome approval": "网页图片允许一次后即可上传",
-      "Allow site": "允许网站",
+      "Remote images need one Chrome approval": "远程图片会自动尝试下载",
+      "Web images can upload after one Chrome approval": "网页图片可下载时自动上传",
+      "Allow site": "检查下载",
       "Do this next": "下一步操作",
       "Main action": "主要操作",
       "Create or open the X Article to fill.": "创建或打开要填入内容的 X 文章。",
@@ -375,8 +384,8 @@ console.log("示例代码块");
       "Draft stays in this browser.": "草稿留在这个浏览器里。",
       "You review and publish in X.": "由你在 X 中检查并发布。",
       "Raw Markdown stays here": "这里保留 Markdown 原文",
-      "This box always keeps the original Markdown text. Use Preview to see recognized images and links; images appear in X only after approval, download check, and Import.": "这个输入框始终保留 Markdown 原文。请到预览里看识别到的图片和链接；图片只有在授权、检查下载并导入后，才会出现在 X 中。",
-      "Use Preview to see what xPoster found. Imported images appear in X after Allow image website, Check downloads, and Import.": "在预览里查看 xPoster 识别到的内容。远程图片要先允许图片网站、检查下载，再导入后才会出现在 X 中。",
+      "This box always keeps the original Markdown text. Use Preview to see recognized images and links; images appear in X only after approval, download check, and Import.": "这个输入框始终保留 Markdown 原文。请到预览里看识别到的图片和链接；写入时可下载的图片会上传到 X。",
+      "Use Preview to see what xPoster found. Imported images appear in X after Allow image website, Check downloads, and Import.": "在预览里查看 xPoster 识别到的内容。写入时，能下载的远程图片会上传到 X；失败的图片会保留链接。",
       "If image links still look like Markdown here, that is normal. xPoster converts them during Import, not inside this text box.": "如果图片链接在这里仍然像 Markdown 语法，这是正常的。xPoster 会在导入时转换它们，不会在这个输入框里转换。",
       "Drop Markdown here": "把 Markdown 拖到这里",
       "Release to load Markdown": "松开即可载入 Markdown",
@@ -395,20 +404,20 @@ console.log("示例代码块");
       "Try upload": "尝试上传",
       "Try image upload": "尝试图片上传",
       "Write again": "再次写入",
-      "Allow this image website now?": "现在允许这个图片网站？",
-      "Click Allow image website. Chrome will ask once; choose Allow, then write again.": "点击允许图片网站。Chrome 会询问一次，选择允许后再次写入。",
+      "Allow this image website now?": "现在检查这些图片？",
+      "Click Allow image website. Chrome will ask once; choose Allow, then write again.": "点击检查下载。可下载的图片会在再次写入时上传。",
       "The article can still be written now; those web images will stay as Markdown links.": "现在也可以继续写入文章；这些网页图片会保留为 Markdown 链接。",
-      "Image website allowed. Write again to upload those images into X.": "图片网站已允许。再次写入即可把这些图片上传到 X。",
+      "Image website allowed. Write again to upload those images into X.": "图片可下载。再次写入即可把这些图片上传到 X。",
       "Some web images are still links. Try image upload again, or replace unreachable image URLs with public links.": "有些网页图片仍是链接。可以再次尝试图片上传，或把不可访问的图片 URL 换成公开链接。",
       "All web images are ready. Write again to upload them.": "所有网页图片已就绪。再次写入即可上传。",
       "All web images uploaded.": "所有网页图片已上传。",
       "No import has run yet.": "还没有写入记录。",
       "Article written.": "文章已写入。",
-      "Web images stayed as Markdown links. Allow the image website, then write again to upload them.": "网页图片保留为 Markdown 链接。允许图片网站后再次写入即可上传。",
+      "Web images stayed as Markdown links. Allow the image website, then write again to upload them.": "网页图片保留为 Markdown 链接。替换为公开可下载链接后再次写入即可上传。",
       "Uploaded": "已上传",
       "kept as links": "保留为链接",
       "Option:": "可选：",
-      "allow that image website, then write again so xPoster can upload them.": "允许该图片网站，然后再次写入，xPoster 就可以上传这些图片。",
+      "allow that image website, then write again so xPoster can upload them.": "替换为公开可下载链接，然后再次写入，xPoster 就可以上传这些图片。",
       "Fallback:": "备选：",
       "if Chrome still cannot read them, xPoster keeps the Markdown links in the article.": "如果 Chrome 仍然无法读取，xPoster 会把 Markdown 图片链接保留在文章里。",
       "1. Input Markdown": "1. 输入 Markdown",
@@ -419,8 +428,8 @@ console.log("示例代码块");
       "Privacy: your draft is processed in this browser; xPoster has no server.": "隐私：草稿只在这个浏览器里处理；xPoster 没有服务器。",
       "xPoster fills the draft; you still review and publish in X.": "xPoster 只填入草稿；仍由你在 X 中检查并发布。",
       "Control: xPoster fills the editor; you still review and publish in X.": "控制权：xPoster 负责填入编辑器；仍由你在 X 中检查并发布。",
-      "Remote image links may ask once for Chrome site access.": "远程图片链接可能会请求一次 Chrome 站点授权。",
-      "Images: remote image links need a one-time Chrome allow step.": "图片：远程图片链接需要一次 Chrome 允许步骤。",
+      "Remote image links may ask once for Chrome site access.": "远程图片链接会自动尝试后台下载。",
+      "Images: remote image links need a one-time Chrome allow step.": "图片：远程图片能下载就上传，失败就保留链接。",
       "No review yet.": "尚未检查文章。",
       "Ready to import": "导入准备",
       "Current step": "当前步骤",
@@ -489,6 +498,33 @@ console.log("示例代码块");
       "No saved records yet.": "还没有保存记录。",
       "Write or check an article to create the first record.": "写入或检查文章后会生成第一条记录。",
       "local record(s), newest first.": "条本地记录，最新在前。",
+      "Draft loaded": "草稿已载入",
+      "Draft ready": "草稿待发布",
+      "Draft updated": "草稿已更新",
+      "Loaded draft": "已载入草稿",
+      "Article URL": "文章地址",
+      "Page URL": "网页地址",
+      "Open article": "打开文章",
+      "No article URL yet": "还没有文章地址",
+      "No page URL yet": "还没有网页地址",
+      Source: "来源",
+      File: "文件",
+      "Dropped file": "拖入文件",
+      "Dropped text": "拖入文本",
+      "Pasted text": "粘贴文本",
+      "Example draft": "示例草稿",
+      "Restored draft": "已恢复草稿",
+      "Typed draft": "手写草稿",
+      Blocks: "块",
+      Step: "阶段",
+      "Technical details": "技术详情",
+      "Import completed": "写入完成",
+      "Import failed": "写入失败",
+      "Check result": "检查结果",
+      "Check blocked": "检查阻断",
+      "Image handling": "图片处理",
+      "Remote images": "远程图片",
+      "Last update": "最后更新",
       Written: "已写入",
       Failed: "失败",
       Blocked: "已阻断",
@@ -510,45 +546,53 @@ console.log("示例代码块");
       "Load example Markdown draft": "加载 Markdown 样例草稿",
       "Load an example Markdown draft": "加载 Markdown 样例草稿",
       "Clear draft": "清除草稿",
-      "Supports headings, lists, links, images, tables, tweet links, code blocks, and dividers. Web image links need a one-time Chrome approval; local image paths need a folder in Settings.": "支持标题、列表、链接、图片、表格、推文链接、代码块和分割线。网页图片链接需要一次 Chrome 允许；本地图片路径需要在设置里选择文件夹。",
+      "Supports headings, lists, links, images, tables, tweet links, code blocks, and dividers. Web image links need a one-time Chrome approval; local image paths need a folder in Settings.": "支持标题、列表、链接、图片、表格、推文链接、代码块和分割线。网页图片会后台下载；本地图片路径需要在设置里选择文件夹。",
       "Supports headings, lists, links, images, tables, tweet links, code blocks, and dividers. Nothing is written to X until you click Import.": "支持标题、列表、链接、图片、表格、推文链接、代码块和分割线。点击导入前，不会写入 X。",
-      "Supports headings, links, images, tables, tweet links, code blocks, and dividers. Remote images may ask for permission to read that image site.": "支持标题、链接、图片、表格、推文链接、代码块和分割线。远程图片可能会请求读取图片网站的权限。",
-      "Supports common Markdown blocks, images, tables, tweet links, code blocks, and dividers. If your draft uses remote image links, Chrome may ask once before xPoster can fetch those images for upload.": "支持常见 Markdown 块、图片、表格、推文链接、代码块和分割线。如果草稿使用远程图片链接，Chrome 可能会先询问一次，xPoster 才能抓取这些图片用于上传。",
+      "Supports headings, links, images, tables, tweet links, code blocks, and dividers. Remote images may ask for permission to read that image site.": "支持标题、链接、图片、表格、推文链接、代码块和分割线。远程图片会在后台尝试下载。",
+      "Supports common Markdown blocks, images, tables, tweet links, code blocks, and dividers. If your draft uses remote image links, Chrome may ask once before xPoster can fetch those images for upload.": "支持常见 Markdown 块、图片、表格、推文链接、代码块和分割线。远程图片可下载时会上传，失败时保留链接。",
       "Remote image access": "远程图片访问",
-      "Remote images need one-time site access": "远程图片需要一次性站点授权",
-      "Allow the image website once": "允许图片网站一次",
-      "Allow web images before import": "导入前允许网页图片",
-      "Web images need one permission": "网页图片需要一次授权",
-      "Allow web images": "允许网页图片",
-      "Allow image website": "允许图片网站",
+      "Remote images need one-time site access": "远程图片自动后台下载",
+      "Allow the image website once": "检查图片下载",
+      "Allow web images before import": "写入前检查图片",
+      "Web images need one permission": "网页图片自动处理",
+      "Allow web images": "检查网页图片",
+      "Allow image website": "检查图片下载",
       "No remote image URLs detected.": "未检测到远程图片 URL。",
       "No remote images": "没有远程图片",
       "No web images": "没有网页图片",
+      "Detect links": "识别链接",
       "Check images": "检查图片",
       "Check downloads": "检查下载",
+      "Checking downloads...": "正在检查下载...",
       "Checking images...": "正在检查图片...",
       "Images checked": "图片已检查",
       "Image check failed": "图片检查失败",
       "Image check": "图片检查",
+      "Web image source": "网页图片来源",
+      "Some downloads failed": "部分图片下载失败",
+      "All web images ready": "所有网页图片已就绪",
+      "The saved record includes the full image check result.": "保存的记录会包含完整图片检查结果。",
+      "xPoster will try to download these images while writing. Failed downloads stay as Markdown links.": "写入时会尝试下载这些图片。下载失败的图片会保留为 Markdown 链接。",
+      "Write can continue. Failed images stay as Markdown links; replace private, expired, or anti-hotlink URLs with public links if they must upload.": "可以继续写入。失败图片会保留为 Markdown 链接；如果必须上传，请把私有、过期或防盗链 URL 换成公开链接。",
       "Not checked": "未检查",
       "Download failed": "下载失败",
       "Download ready": "可下载",
-      "Allow image site": "授权图片站点",
-      "Allow image website": "允许图片网站",
-      "Allowed": "已授权",
-      "Needs permission": "需要授权",
-      "Needs Chrome permission": "需要 Chrome 授权",
-      "Needs Chrome approval": "需要 Chrome 允许",
-      "Chrome asks because these images live on another website. Without this approval, xPoster cannot turn Markdown image links into uploaded images in X.": "Chrome 会询问，是因为这些图片在另一个网站上。没有这次允许，xPoster 无法把 Markdown 图片链接变成 X 里的已上传图片。",
-      "Chrome asks because these images live on another website. After approval, xPoster checks that each image can be downloaded before it writes anything to X.": "Chrome 会询问，是因为这些图片在另一个网站上。允许后，xPoster 会先逐张检查图片是否能下载，然后才写入 X。",
-      "Why Chrome asks:": "Chrome 为什么询问：",
+      "Allow image site": "检查图片下载",
+      "Allow image website": "检查图片下载",
+      "Allowed": "可下载",
+      "Needs permission": "需要检查",
+      "Needs Chrome permission": "需要检查下载",
+      "Needs Chrome approval": "需要检查下载",
+      "Chrome asks because these images live on another website. Without this approval, xPoster cannot turn Markdown image links into uploaded images in X.": "这些图片在另一个网站上。xPoster 会后台下载，可下载时交给 X 上传；失败时保留链接。",
+      "Chrome asks because these images live on another website. After approval, xPoster checks that each image can be downloaded before it writes anything to X.": "这些图片在另一个网站上。xPoster 会逐张检查能否下载，然后再写入 X。",
+      "Why Chrome asks:": "为什么要检查：",
       "these Markdown images live on another website.": "这些 Markdown 图片在另一个网站上。",
       "Why:": "原因：",
-      "Chrome asks before xPoster reads an image website.": "xPoster 读取图片网站前，Chrome 会先询问。",
-      "your Markdown points to images on another website, so Chrome asks before xPoster reads that website.": "你的 Markdown 指向另一个网站上的图片，所以 Chrome 会在 xPoster 读取该网站前先询问。",
+      "Chrome asks before xPoster reads an image website.": "xPoster 会后台读取图片文件，不读取站点 cookie。",
+      "your Markdown points to images on another website, so Chrome asks before xPoster reads that website.": "你的 Markdown 指向另一个网站上的图片，所以 xPoster 会尝试后台下载图片文件。",
       "the image is on another website.": "图片在另一个网站上。",
       "What to do next:": "下一步：",
-      "click Allow image website, then Check downloads.": "点击允许图片网站，然后检查下载。",
+      "click Allow image website, then Check downloads.": "点击检查下载，确认哪些图片能上传。",
       "What xPoster does:": "xPoster 会做什么：",
       "What xPoster does not do:": "xPoster 不会做什么：",
       "it checks every image first. If one image link is temporarily unreachable, import stops and names the failed image.": "它会先检查每张图片。如果某个图片链接暂时不可访问，导入会停止并标出失败图片。",
@@ -564,56 +608,56 @@ console.log("示例代码块");
       "xPoster only reads this image site and never publishes for you.": "xPoster 只读取这个图片网站，也不会替你发布。",
       "read unrelated sites, publish for you, or send images to an xPoster server.": "读取无关网站、替你发布，或把图片发送到 xPoster 服务器。",
       "What to do next": "下一步",
-      "No Chrome prompt?": "没有 Chrome 弹窗？",
-      "Click the button below. When Chrome asks, choose Allow. If Chrome does not show a prompt, reload xPoster in chrome://extensions and reopen the X Article tab.": "点击下面的按钮。Chrome 弹窗出现时选择允许。如果 Chrome 没有弹窗，请在 chrome://extensions 重新加载 xPoster，并重新打开 X 文章标签页。",
-      "Click Allow image website first. After Chrome allows the site, click Check images if every Markdown image must upload.": "请先点击允许图片网站。Chrome 允许该站点后，如果每张 Markdown 图片都必须上传，可以点击检查图片。",
-      "Click Allow image website. When Chrome asks for the image site, choose Allow.": "点击允许图片网站。当 Chrome 询问图片网站时，选择允许。",
-      "If Chrome does not show a permission prompt, reload xPoster from chrome://extensions and reopen the side panel so the service worker uses the latest permission state.": "如果 Chrome 没有弹出权限窗口，请在 chrome://extensions 重新加载 xPoster，并重新打开侧边栏，让后台服务使用最新权限状态。",
-      "If Chrome does not show a permission prompt, open chrome://extensions, reload xPoster, reopen the X Article tab and the side panel, then click Allow image website again.": "如果 Chrome 没有弹出权限窗口，请打开 chrome://extensions，重新加载 xPoster，重新打开 X 文章标签页和侧边栏，然后再次点击允许图片网站。",
+      "No Chrome prompt?": "图片没有上传？",
+      "Click the button below. When Chrome asks, choose Allow. If Chrome does not show a prompt, reload xPoster in chrome://extensions and reopen the X Article tab.": "点击下面的检查按钮。失败时，请把图片换成公开、未过期、可直接打开的链接。",
+      "Click Allow image website first. After Chrome allows the site, click Check images if every Markdown image must upload.": "可以先点击检查图片；如果每张图片都必须上传，失败链接需要替换成公开链接。",
+      "Click Allow image website. When Chrome asks for the image site, choose Allow.": "点击检查图片下载。xPoster 会列出可上传和失败的图片。",
+      "If Chrome does not show a permission prompt, reload xPoster from chrome://extensions and reopen the side panel so the service worker uses the latest permission state.": "如果检查结果异常，请在 chrome://extensions 重新加载 xPoster，并重新打开侧边栏。",
+      "If Chrome does not show a permission prompt, open chrome://extensions, reload xPoster, reopen the X Article tab and the side panel, then click Allow image website again.": "如果检查结果异常，请打开 chrome://extensions，重新加载 xPoster，重新打开 X 文章标签页和侧边栏，然后再次检查下载。",
       "Click Check images for a multi-image draft when every web image must upload. xPoster will list the exact image if an image URL is temporarily unreachable.": "如果多图草稿里的每张网页图片都必须上传，可以点击检查图片；某个图片 URL 暂时不可访问时，xPoster 会列出具体图片。",
       "Check images if this remote image must become an upload.": "如果这张远程图片必须变成上传图片，可以检查图片。",
-      "Permission declined": "授权被拒绝",
-      "Remote image access not available in this context.": "当前环境无法请求远程图片授权。",
-      "All remote image sites are allowed.": "所有远程图片站点均已授权。",
-      "Image websites are not allowed yet. Write can continue; allow the website when you want xPoster to upload those images.": "图片网站尚未允许。写入可以继续；需要 xPoster 上传这些图片时，再允许该网站。",
-      "Chrome will ask once for the image site before xPoster reads these images.": "xPoster 读取这些图片前，Chrome 会对图片站点询问一次授权。",
-      "Chrome needs your approval before xPoster can fetch these remote image links for upload.": "xPoster 抓取这些远程图片用于上传前，需要你先在 Chrome 中允许该图片站点。",
-      "Chrome is asking for image access:": "Chrome 正在请求图片访问权限：",
-      "Click Import or Allow image website. Chrome will ask once for this image website.": "点击导入或允许图片网站。Chrome 会对这个图片网站询问一次授权。",
-      "Chrome asks once before xPoster can download Markdown images from this website for X upload.": "Chrome 会先询问一次。允许后，xPoster 才能下载这个网站上的 Markdown 图片并上传到 X。",
-      "The image website is allowed. Check every image link if every web image must upload.": "图片网站已允许。如果每张网页图片都必须上传，可以检查每个图片链接。",
-      "Allow the image site first.": "请先授权图片站点。",
-      "Allow image site first.": "请先授权图片站点。",
-      "Remote images are allowed.": "远程图片已授权。",
-      "Remote images need permission.": "远程图片需要授权。",
-      "Remote images are not required.": "无需远程图片授权。",
-      "Request optional access only for these image URLs.": "只为这些图片 URL 请求可选访问权限。",
-      "Remote image sites are not allowed yet. Click Allow image site if you want xPoster to upload those images.": "远程图片站点尚未允许。如果希望 xPoster 上传这些图片，请点击授权图片站点。",
-      "Remote image access can only be granted from the installed xPoster extension side panel.": "远程图片授权只能在已安装的 xPoster 扩展侧边栏中完成。",
-      "Open the installed xPoster side panel to allow this image website.": "请在已安装的 xPoster 侧边栏中允许这个图片网站。",
-      "Click Allow image site so Chrome can ask for image-site access.": "点击授权图片站点，让 Chrome 询问图片站点访问权限。",
-      "Remote image permission was declined.": "远程图片授权被拒绝。",
-      "Remote image permission granted.": "远程图片授权已通过。",
-      "Remote image permission already granted.": "远程图片授权已存在。",
-      "Remote image site is not supported in this low-permission build.": "当前低权限版本尚未支持这个远程图片站点。",
-      "Image website allowed.": "图片网站已允许。",
-      "Image website allowed": "图片网站已允许",
-      "Image website already allowed.": "图片网站已允许。",
-      "Image website needs approval": "图片网站需要允许",
-      "Remote image permission pending": "远程图片授权待处理",
-      "Allow the remote image site to upload remote URLs.": "授权远程图片站点后即可上传远程 URL。",
-      "Remote image sites are allowed.": "远程图片站点已授权。",
-      "Remote image URLs are allowed, but image download has not been checked yet.": "远程图片 URL 已授权，但还没有检查图片是否能下载。",
-      "Remote image URLs are allowed and every image was downloaded successfully.": "远程图片 URL 已授权，且每张图片都已成功下载检查。",
-      "Every web image is allowed and downloadable.": "每张网页图片都已允许并可下载。",
-      "web image(s). Allow this image website once, then check downloads.": "张网页图片。请先允许这个图片网站，然后检查下载。",
-      "Needs approval": "需要允许",
-      "xPoster asks only for this image website.": "xPoster 只会请求这个图片网站。",
-      "xPoster only asks for this image website.": "xPoster 只会请求这个图片网站。",
-      "Click Allow image website, then choose Allow in Chrome.": "点击允许图片网站，然后在 Chrome 弹窗中选择允许。",
+      "Permission declined": "下载失败",
+      "Remote image access not available in this context.": "当前环境无法检查远程图片。",
+      "All remote image sites are allowed.": "所有远程图片都会自动尝试下载。",
+      "Image websites are not allowed yet. Write can continue; allow the website when you want xPoster to upload those images.": "写入可以继续；不可下载的图片会保留为 Markdown 链接。",
+      "Chrome will ask once for the image site before xPoster reads these images.": "xPoster 会在后台尝试下载这些图片。",
+      "Chrome needs your approval before xPoster can fetch these remote image links for upload.": "xPoster 会在后台尝试下载这些远程图片，用于交给 X 上传。",
+      "Chrome is asking for image access:": "正在检查图片：",
+      "Click Import or Allow image website. Chrome will ask once for this image website.": "点击写入或检查下载。可下载的图片会交给 X 上传。",
+      "Chrome asks once before xPoster can download Markdown images from this website for X upload.": "xPoster 会先下载这个网站上的 Markdown 图片，然后交给 X 上传。",
+      "The image website is allowed. Check every image link if every web image must upload.": "可以检查每个图片链接；如果每张网页图片都必须上传，请处理失败项。",
+      "Allow the image site first.": "请先检查图片下载。",
+      "Allow image site first.": "请先检查图片下载。",
+      "Remote images are allowed.": "远程图片会自动处理。",
+      "Remote images need permission.": "远程图片需要检查下载。",
+      "Remote images are not required.": "未检测到远程图片。",
+      "Request optional access only for these image URLs.": "只检查这些图片 URL。",
+      "Remote image sites are not allowed yet. Click Allow image site if you want xPoster to upload those images.": "这些远程图片会在写入时尝试下载；需要全部上传时，请先检查下载。",
+      "Remote image access can only be granted from the installed xPoster extension side panel.": "远程图片检查需要在已安装的 xPoster 扩展侧边栏中完成。",
+      "Open the installed xPoster side panel to allow this image website.": "请在已安装的 xPoster 侧边栏中检查图片下载。",
+      "Click Allow image site so Chrome can ask for image-site access.": "点击检查图片下载，查看哪些图片可上传。",
+      "Remote image permission was declined.": "远程图片下载失败。",
+      "Remote image permission granted.": "远程图片可下载。",
+      "Remote image permission already granted.": "远程图片已可下载。",
+      "Remote image site is not supported in this low-permission build.": "当前版本无法下载这个远程图片。",
+      "Image website allowed.": "图片可下载。",
+      "Image website allowed": "图片可下载",
+      "Image website already allowed.": "图片已可下载。",
+      "Image website needs approval": "图片需要检查",
+      "Remote image permission pending": "远程图片等待检查",
+      "Allow the remote image site to upload remote URLs.": "检查远程图片后即可确认哪些能上传。",
+      "Remote image sites are allowed.": "远程图片会自动尝试下载。",
+      "Remote image URLs are allowed, but image download has not been checked yet.": "远程图片 URL 会自动尝试下载，也可以先检查下载。",
+      "Remote image URLs are allowed and every image was downloaded successfully.": "远程图片 URL 已全部成功下载检查。",
+      "Every web image is allowed and downloadable.": "每张网页图片都可下载。",
+      "web image(s). Allow this image website once, then check downloads.": "张网页图片。可以先检查下载。",
+      "Needs approval": "需要检查",
+      "xPoster asks only for this image website.": "xPoster 只检查这个图片来源。",
+      "xPoster only asks for this image website.": "xPoster 只检查这个图片来源。",
+      "Click Allow image website, then choose Allow in Chrome.": "点击检查下载，查看哪些图片可上传。",
       "Reload xPoster in chrome://extensions, reopen the X Article tab and side panel, then try again.": "在 chrome://extensions 重新加载 xPoster，重新打开 X 文章标签页和侧边栏，然后再试。",
-      "Remote image URLs are allowed, but some images could not be downloaded.": "远程图片 URL 已授权，但有部分图片无法下载。",
-      "Remote image URLs are allowed, but image upload has not been tried yet.": "远程图片 URL 已授权，但还没有尝试图片上传。",
+      "Remote image URLs are allowed, but some images could not be downloaded.": "有部分远程图片无法下载。",
+      "Remote image URLs are allowed, but image upload has not been tried yet.": "远程图片 URL 可尝试上传，但还没有写入。",
       "Old Markdown importer is still active in this X tab.": "旧的 Markdown 导入插件仍然在这个 X 标签页中运行。",
       "Refresh or reopen the X Article tab so only xPoster handles this import.": "请刷新或重新打开 X 文章标签页，确保只有 xPoster 处理这次导入。",
       "Old importer detected": "检测到旧导入插件",
@@ -625,7 +669,7 @@ console.log("示例代码块");
       "xPoster recognized these Markdown images, but it cannot upload them until Chrome can download each image file. If a COS signed URL fails, open it in a normal tab; if it does not load there, regenerate a public image link and check downloads again.": "xPoster 已识别这些 Markdown 图片，但必须等 Chrome 能下载每一个图片文件后才能上传。如果某个 COS 签名链接失败，请先在普通标签页打开它；如果普通标签页也打不开，请重新生成可公开访问的图片链接，再检查下载。",
       "Checking remote images...": "正在检查远程图片...",
       "Check remote images before expecting uploads.": "需要上传远程图片时，请检查图片。",
-      "Image website allowed. Check downloads if every image must upload.": "图片网站已允许。如果每张图片都必须上传，可以检查下载。",
+      "Image website allowed. Check downloads if every image must upload.": "可以检查下载。如果每张图片都必须上传，请处理失败项。",
       "Click Check downloads if every web image must become an uploaded X image.": "如果每张网页图片都必须变成 X 上传图片，可以点击检查下载。",
       "Download blocked": "下载受阻",
       "Some web images could not be downloaded.": "有些网页图片无法下载。",
@@ -638,7 +682,7 @@ console.log("示例代码块");
       "This preview shows what xPoster found and what it will move into X.": "这里会显示 xPoster 识别到什么，以及会把什么搬进 X。",
       "Preview is the conversion check": "预览是转换检查",
       "The draft box stays as text. This section shows what xPoster recognized before it fills X.": "草稿框会一直保持文字。这里显示 xPoster 在填入 X 前识别到了什么。",
-      "This is a recognition preview. Image links are still text in the draft box, but xPoster will upload them into X after the image website is allowed and downloads pass.": "这是识别预览。图片链接在草稿框里仍是文字；允许图片网站并检查下载通过后，xPoster 会把它们上传进 X。",
+      "This is a recognition preview. Image links are still text in the draft box, but xPoster will upload them into X after the image website is allowed and downloads pass.": "这是识别预览。图片链接在草稿框里仍是文字；写入时可下载的图片会上传进 X。",
       "image links convert during Import": "图片链接会在导入时转换",
       "Import plan": "导入计划",
       "What xPoster will do": "xPoster 会做什么",
@@ -779,14 +823,14 @@ console.log("示例代码块");
       "Local image folder is optional.": "本地图片文件夹是可选项。",
       "No local image paths detected.": "未检测到本地图片路径。",
       "Remote images": "远程图片",
-      "Remote image URLs are already allowed.": "远程图片 URL 已授权。",
-      "Remote image URLs need permission before upload.": "远程图片 URL 上传前需要授权。",
-      "Web image links need approval before upload.": "网页图片链接上传前需要允许。",
-      "Web image links need approval": "网页图片链接需要允许",
-      "Web images can upload after one Chrome approval": "网页图片允许一次后即可上传",
-      "Allow image website first.": "请先允许图片网站。",
-      "Allow the image website.": "请允许图片网站。",
-      "Allow site": "允许网站",
+      "Remote image URLs are already allowed.": "远程图片 URL 会自动尝试下载。",
+      "Remote image URLs need permission before upload.": "远程图片 URL 上传前会先尝试下载。",
+      "Web image links need approval before upload.": "网页图片链接会自动尝试下载。",
+      "Web image links need approval": "网页图片链接会自动处理",
+      "Web images can upload after one Chrome approval": "网页图片可下载时即可上传",
+      "Allow image website first.": "请先检查图片下载。",
+      "Allow the image website.": "请检查图片下载。",
+      "Allow site": "检查下载",
       "Check X": "检查 X",
       "Check images": "检查图片",
       Plan: "计划",
@@ -1131,8 +1175,8 @@ console.log("示例代码块");
       "Create or open an X Article draft, then run Check X page so xPoster can confirm text and image access.": "创建或打开一篇 X 文章草稿，然后点击检查文章，确认 xPoster 能写入文字并上传图片。",
       "Create or open an X Article draft, then click Check article so xPoster can confirm text and image access.": "创建或打开一篇 X 文章草稿，然后点击检查文章，确认 xPoster 能写入文字并上传图片。",
       "Create or open an X Article draft, then click Check article so xPoster can confirm text and image access.": "创建或打开一篇 X 文章草稿，然后点击检查文章，确认 xPoster 能写入文字并上传图片。",
-      "Allow the image website": "允许图片网站",
-      "Chrome needs one approval before xPoster can read web images from your Markdown and upload them into X.": "xPoster 读取 Markdown 里的网页图片并上传到 X 前，需要你在 Chrome 里允许一次。",
+      "Allow the image website": "检查图片下载",
+      "Chrome needs one approval before xPoster can read web images from your Markdown and upload them into X.": "xPoster 会在后台尝试下载 Markdown 里的网页图片，可下载时交给 X 上传。",
       "Run publishing check": "运行发布前检查",
       "Check the X editor": "检查 X 编辑器",
       "Verify the MAIN-world bridge and X upload handler against the active article editor.": "检查当前文章编辑器的连接和上传能力。",
@@ -1187,9 +1231,9 @@ console.log("示例代码块");
       "Click Check after the X editor opens.": "X 编辑器打开后点击检查。",
       "Click Check with the X editor open so images can upload.": "X 编辑器打开后点击检查，这样图片才能上传。",
       "Choose the local image folder.": "请选择本地图片文件夹。",
-      "Allow the remote image site.": "请授权远程图片站点。",
-      "Approve the image website so xPoster can upload Markdown images.": "请允许图片网站，这样 xPoster 才能上传 Markdown 里的图片。",
-      "Click Allow image website if you want xPoster to upload web images, then approve Chrome's prompt.": "如果希望 xPoster 上传网页图片，请点击允许图片网站，并在 Chrome 弹窗中允许。",
+      "Allow the remote image site.": "请检查远程图片下载。",
+      "Approve the image website so xPoster can upload Markdown images.": "请检查图片下载，确认哪些 Markdown 图片能上传。",
+      "Click Allow image website if you want xPoster to upload web images, then approve Chrome's prompt.": "如果希望网页图片都上传，请点击检查下载，并替换无法访问的链接。",
       "Click Check downloads if every web image must become an uploaded X image.": "如果每张网页图片都必须变成 X 上传图片，可以点击检查下载。",
       "Ready to import into the active X Article.": "可以导入到当前 X 文章。",
       "Parse Markdown": "解析 Markdown",
@@ -1303,11 +1347,11 @@ console.log("示例代码块");
       "No fenced code blocks detected.": "未检测到围栏代码块。",
       "Horizontal rules can be inserted as divider atomic blocks.": "分隔线可以放入文章。",
       "No dividers detected.": "未检测到分隔线。",
-      "Remote image URLs will be fetched after you allow their source site.": "允许图片来源站点后，会抓取远程图片 URL。",
-      "Remote image URLs need source-site permission before upload.": "远程图片 URL 上传前需要授权图片来源站点。",
+      "Remote image URLs will be fetched after you allow their source site.": "写入时会尝试下载远程图片 URL。",
+      "Remote image URLs need source-site permission before upload.": "远程图片 URL 上传前会先尝试下载。",
       "Remote HTTP images": "远程 HTTP 图片",
       "Remote image URL": "远程图片 URL",
-      "Allow the image site to upload this image.": "授权图片站点后即可上传这张图片。",
+      "Allow the image site to upload this image.": "图片可下载后即可上传这张图片。",
       "Absolute local paths are blocked; use paths relative to the selected folder.": "已阻止绝对本地路径；请使用相对于所选文件夹的路径。",
       "Relative local images can resolve through the selected folder.": "相对路径本地图片可通过所选文件夹读取。",
       "Choose a readable folder from the active X page.": "请从当前 X 页面选择一个可读取文件夹。",
@@ -1412,6 +1456,8 @@ console.log("示例代码块");
       [/^(\d+) blocks$/, "$1 个块"],
       [/^(\d+) blocks loaded; title detected\.$/, "已加载 $1 个块；已检测标题。"],
       [/^(\d+) blocks loaded; title missing\.$/, "已加载 $1 个块；未检测标题。"],
+      [/^Loaded (\d+) characters\. Review it, then click Write article\.$/, "已载入 $1 个字符。检查后点击写入文章。"],
+      [/^(\d+) characters\. Review it, then click Write article\.$/, "$1 个字符。检查后点击写入文章。"],
       [/^(\d+) publishable block\(s\), title detected$/, "$1 个可发布块，已检测标题"],
       [/^(\d+) publishable block\(s\), no title detected$/, "$1 个可发布块，未检测标题"],
       [/^(\d+) publishable block\(s\) loaded\.$/, "已加载 $1 个可发布块。"],
@@ -1427,14 +1473,14 @@ console.log("示例代码块");
       [/^(\d+) media upload item\(s\) can upload through X\.$/, "$1 个媒体上传项可通过 X 上传。"],
       [/^(\d+) local image\(s\) can resolve through (.+)\.$/, "$1 张本地图片可通过 $2 读取。"],
       [/^(\d+) local image\(s\) need a readable folder\.$/, "$1 张本地图片需要选择可读取文件夹。"],
-      [/^(\d+) remote image\(s\) need source-site permission before upload\.$/, "$1 张远程图片上传前需要授权来源站点。"],
-      [/^(\d+) remote image\(s\) need Chrome site access before upload\.$/, "$1 张远程图片上传前需要 Chrome 站点授权。"],
-      [/^(\d+) remote image\(s\) from (\d+) site\(s\) need permission before upload\.$/, "$1 张远程图片来自 $2 个站点，上传前需要授权。"],
-      [/^(\d+) remote image\(s\) from (\d+) site\(s\) need Chrome site access before upload\.$/, "$1 张远程图片来自 $2 个站点，上传前需要 Chrome 站点授权。"],
-      [/^(\d+) remote image\(s\) from (\d+) site\(s\) need Chrome site access before upload\. This is a browser permission step, not an X upload failure\.$/, "$1 张远程图片来自 $2 个站点，上传前需要 Chrome 站点授权。这是浏览器权限步骤，不是 X 上传失败。"],
-      [/^(\d+) web image\(s\) from (\d+) image website\(s\) need your approval before upload\. This is a Chrome permission step, not an X upload failure\.$/, "$1 张网页图片来自 $2 个图片网站，上传前需要你允许。这是 Chrome 权限步骤，不是 X 上传失败。"],
-      [/^(\d+) web image\(s\) need one Chrome approval before upload\.$/, "$1 张网页图片上传前需要一次 Chrome 允许。"],
-      [/^(\d+) web image\(s\) need one Chrome permission before xPoster can upload them\.$/, "$1 张网页图片需要一次 Chrome 授权，xPoster 才能上传。"],
+      [/^(\d+) remote image\(s\) need source-site permission before upload\.$/, "$1 张远程图片会在上传前尝试下载。"],
+      [/^(\d+) remote image\(s\) need Chrome site access before upload\.$/, "$1 张远程图片会在上传前尝试下载。"],
+      [/^(\d+) remote image\(s\) from (\d+) site\(s\) need permission before upload\.$/, "$1 张远程图片来自 $2 个站点，会在上传前尝试下载。"],
+      [/^(\d+) remote image\(s\) from (\d+) site\(s\) need Chrome site access before upload\.$/, "$1 张远程图片来自 $2 个站点，会在上传前尝试下载。"],
+      [/^(\d+) remote image\(s\) from (\d+) site\(s\) need Chrome site access before upload\. This is a browser permission step, not an X upload failure\.$/, "$1 张远程图片来自 $2 个站点，会在上传前尝试下载。这不是 X 上传失败。"],
+      [/^(\d+) web image\(s\) from (\d+) image website\(s\) need your approval before upload\. This is a Chrome permission step, not an X upload failure\.$/, "$1 张网页图片来自 $2 个图片网站，会在上传前尝试下载。这不是 X 上传失败。"],
+      [/^(\d+) web image\(s\) need one Chrome approval before upload\.$/, "$1 张网页图片会在上传前尝试下载。"],
+      [/^(\d+) web image\(s\) need one Chrome permission before xPoster can upload them\.$/, "$1 张网页图片会在上传前尝试下载，成功后交给 X 上传。"],
       [/^(\d+) remote image\(s\) from (\d+) site\(s\) can be fetched\.$/, "$1 张远程图片来自 $2 个站点，已可抓取。"],
       [/^(\d+) web image\(s\) from (\d+) image website\(s\) are allowed\.$/, "$1 张网页图片来自 $2 个图片网站，已允许。"],
       [/^(\d+) web image\(s\) checked: (\d+) ready, (\d+) failed\.$/, "已检查 $1 张网页图片：$2 张可用，$3 张失败。"],
@@ -1443,62 +1489,70 @@ console.log("示例代码块");
       [/^Image (\d+) failed \((.+)\) from (.+): (.+)$/, "图片 $1 失败（$2），来源 $3：$4"],
       [/^Image (\d+) failed: (.+)\.$/, "图片 $1 失败：$2。"],
       [/^Image (\d+) not checked yet\.$/, "图片 $1 尚未检查。"],
+      [/^Image (\d+) will be tried during Write\.$/, "写入时会尝试处理图片 $1。"],
       [/^Download failed: (.+)\.$/, "下载失败：$1。"],
       [/^Remote image check failed before import: (.+)\.$/, "导入前远程图片检查失败：$1。"],
       [/^Remote image check passed for (\d+) image\(s\)\.$/, "$1 张远程图片检查通过。"],
-      [/^Chrome is asking for image access: (.+)$/, "Chrome 正在请求图片访问权限：$1"],
-      [/^Remote image check requires image website approval first\.$/, "远程图片检查需要先允许图片网站。"],
-      [/^Allow this image website now\? (.+) web image\(s\) from (.+) stayed as Markdown links\.$/, "现在允许这个图片网站？$1 张网页图片来自 $2，当前保留为 Markdown 链接。"],
-      [/^Allow this image website now\? (.+) web image from (.+) stayed as a Markdown link\.$/, "现在允许这个图片网站？$1 张网页图片来自 $2，当前保留为 Markdown 链接。"],
+      [/^Chrome is asking for image access: (.+)$/, "正在检查图片：$1"],
+      [/^Remote image check requires image website approval first\.$/, "远程图片检查会直接尝试下载图片。"],
+      [/^Allow this image website now\? (.+) web image\(s\) from (.+) stayed as Markdown links\.$/, "现在检查这些图片？$1 张网页图片来自 $2，当前保留为 Markdown 链接。"],
+      [/^Allow this image website now\? (.+) web image from (.+) stayed as a Markdown link\.$/, "现在检查这张图片？$1 张网页图片来自 $2，当前保留为 Markdown 链接。"],
       [/^(.+) web image\(s\) are ready\. Write again to upload them into X\.$/, "$1 张网页图片已就绪。再次写入即可上传到 X。"],
       [/^(.+) web image is ready\. Write again to upload it into X\.$/, "$1 张网页图片已就绪。再次写入即可上传到 X。"],
-      [/^(.+) web image\(s\) are allowed, but (.+) could not be downloaded\.$/, "$1 张网页图片已允许，但 $2 张无法下载。"],
+      [/^(.+) web image\(s\) are allowed, but (.+) could not be downloaded\.$/, "$1 张网页图片已检查，但 $2 张无法下载。"],
       [/^(.+) web image\(s\) stayed as Markdown links\.$/, "$1 张网页图片保留为 Markdown 链接。"],
       [/^Article written in (.+)\.$/, "文章已写入，用时 $1。"],
-      [/^Article written in (.+)\. (.+) web image\(s\) stayed as Markdown links\. Open xPoster, allow the image website, then write again to upload them\.$/, "文章已写入，用时 $1。$2 张网页图片保留为 Markdown 链接。打开 xPoster，允许图片网站，然后再次写入即可上传。"],
-      [/^Article written in (.+)\. (.+) web image\(s\) stayed as Markdown links\. Allow the image website in xPoster, then write again to upload them\.$/, "文章已写入，用时 $1。$2 张网页图片保留为 Markdown 链接。请在 xPoster 中允许图片网站，然后再次写入即可上传。"],
+      [/^Article written in (.+)\. (.+) web image\(s\) stayed as Markdown links\. Open xPoster, allow the image website, then write again to upload them\.$/, "文章已写入，用时 $1。$2 张网页图片保留为 Markdown 链接。替换为公开可下载链接后再次写入即可上传。"],
+      [/^Article written in (.+)\. (.+) web image\(s\) stayed as Markdown links\. Allow the image website in xPoster, then write again to upload them\.$/, "文章已写入，用时 $1。$2 张网页图片保留为 Markdown 链接。替换为公开可下载链接后再次写入即可上传。"],
       [/^Article written in (.+)\. (.+) table\(s\) stayed as Markdown\.$/, "文章已写入，用时 $1。$2 个表格保留为 Markdown。"],
-      [/^Article written in (.+)\. (.+) web image\(s\) stayed as Markdown links; (.+) table\(s\) stayed as Markdown\. Allow the image website in xPoster, then write again to upload them\.$/, "文章已写入，用时 $1。$2 张网页图片保留为 Markdown 链接；$3 个表格保留为 Markdown。请在 xPoster 中允许图片网站，然后再次写入即可上传图片。"],
+      [/^Article written in (.+)\. (.+) web image\(s\) stayed as Markdown links; (.+) table\(s\) stayed as Markdown\. Allow the image website in xPoster, then write again to upload them\.$/, "文章已写入，用时 $1。$2 张网页图片保留为 Markdown 链接；$3 个表格保留为 Markdown。替换为公开可下载图片链接后再次写入即可上传。"],
       [/^Uploaded (\d+), kept (\d+) as links$/, "已上传 $1，$2 个保留为链接"],
       [/^Uploaded (\d+)$/, "已上传 $1"],
       [/^(\d+) uploaded, (\d+) kept$/, "已上传 $1，$2 个保留"],
-      [/^(\d+) web image\. Allow this image website once, then check downloads\.$/, "$1 张网页图片。请先允许这个图片网站，然后检查下载。"],
-      [/^(\d+) web image\(s\)\. Allow this image website once, then check downloads\.$/, "$1 张网页图片。请先允许这个图片网站，然后检查下载。"],
-      [/^(\d+) images?\. xPoster asks only for this image website\.$/, "$1 张图片。xPoster 只会请求这个图片网站。"],
-      [/^(.+) - (\d+) images?\. xPoster asks only for this image website\.$/, "$1 - $2 张图片。xPoster 只会请求这个图片网站。"],
-      [/^(\d+) image\(s\)\. xPoster asks only for this image website\.$/, "$1 张图片。xPoster 只会请求这个图片网站。"],
-      [/^(.+): Needs approval$/, "$1：需要允许"],
-      [/^(.+): Allowed$/, "$1：已允许"],
-      [/^Click Allow image website, choose Allow in Chrome, then check downloads before Import\.$/, "点击允许图片网站，在 Chrome 中选择允许，然后导入前检查下载。"],
-      [/^Click Allow image website, choose Allow in Chrome, then click Check downloads before Import\.$/, "点击允许图片网站，在 Chrome 中选择允许，然后导入前点击检查下载。"],
-      [/^Click Allow image website\. When Chrome asks for (.+), choose Allow\. Then click Check downloads before Import\.$/, "点击允许图片网站。当 Chrome 询问 $1 时，选择允许。然后导入前点击检查下载。"],
+      [/^(\d+) web image\. Allow this image website once, then check downloads\.$/, "$1 张网页图片。可以先检查下载。"],
+      [/^(\d+) web image\(s\)\. Allow this image website once, then check downloads\.$/, "$1 张网页图片。可以先检查下载。"],
+      [/^(\d+) images?\. xPoster asks only for this image website\.$/, "$1 张图片。xPoster 只会检查这个图片来源。"],
+      [/^(.+) - (\d+) images?\. xPoster asks only for this image website\.$/, "$1 - $2 张图片。xPoster 只会检查这个图片来源。"],
+      [/^(\d+) image\(s\)\. xPoster asks only for this image website\.$/, "$1 张图片。xPoster 只会检查这个图片来源。"],
+      [/^(.+): Needs approval$/, "$1：需要检查"],
+      [/^(.+): Allowed$/, "$1：可下载"],
+      [/^Click Allow image website, choose Allow in Chrome, then check downloads before Import\.$/, "点击检查下载，确认哪些图片可上传。"],
+      [/^Click Allow image website, choose Allow in Chrome, then click Check downloads before Import\.$/, "点击检查下载，确认哪些图片可上传。"],
+      [/^Click Allow image website\. When Chrome asks for (.+), choose Allow\. Then click Check downloads before Import\.$/, "点击检查下载，确认 $1 的图片是否可上传。"],
       [/^Reload xPoster in chrome:\/\/extensions, reopen the X Article tab and side panel, then try again\.$/, "在 chrome://extensions 重新加载 xPoster，重新打开 X 文章标签页和侧边栏，然后再试。"],
-      [/^(\d+) remote image\(s\) from (.+) need permission\.$/, "$1 张远程图片来自 $2，需要授权。"],
-      [/^(\d+) remote image\(s\) from (.+) allowed\.$/, "$1 张远程图片来自 $2，已授权。"],
+      [/^(\d+) remote image\(s\) from (.+) need permission\.$/, "$1 张远程图片来自 $2，需要检查下载。"],
+      [/^(\d+) remote image\(s\) from (.+) allowed\.$/, "$1 张远程图片来自 $2，可尝试下载。"],
       [/^(\d+) image\(s\) from this site\.$/, "该站点 $1 张图片。"],
       [/^(\d+) image\(s\) from this website\. xPoster only requests this image source\.$/, "这个网站有 $1 张图片。xPoster 只请求这个图片来源。"],
-      [/^(\d+) image\(s\) from this website\. xPoster asks only for this image site\.$/, "这个网站有 $1 张图片。xPoster 只请求这个图片网站。"],
-      [/^(.+) - Needs Chrome approval$/, "$1 - 需要 Chrome 允许"],
-      [/^(.+) - Allowed$/, "$1 - 已允许"],
+      [/^(\d+) image\(s\) from this website\. xPoster asks only for this image site\.$/, "这个网站有 $1 张图片。xPoster 只检查这个图片来源。"],
+      [/^(.+) - (\d+) image\. xPoster fetches without site cookies and then lets X upload the file\.$/, "$1 - $2 张图片。xPoster 不带站点 cookie 下载，然后交给 X 上传。"],
+      [/^(.+) - (\d+) images\. xPoster fetches without site cookies and then lets X upload the file\.$/, "$1 - $2 张图片。xPoster 不带站点 cookie 下载，然后交给 X 上传。"],
+      [/^(\d+) web image\(s\) detected\. xPoster will try to download public images while writing; failed downloads stay as Markdown links\.$/, "检测到 $1 张网页图片。写入时会尝试下载公开图片；失败图片会保留为 Markdown 链接。"],
+      [/^(\d+) web image\(s\) checked: (\d+) ready, (\d+) will stay as Markdown links unless the URLs are replaced\.$/, "已检查 $1 张网页图片：$2 张可用，$3 张会保留为 Markdown 链接，除非替换 URL。"],
+      [/^(\d+) web image is downloadable\. Write article to upload it into X\.$/, "$1 张网页图片可下载。写入文章时会上传到 X。"],
+      [/^(\d+) web image\(s\) are downloadable\. Write article to upload them into X\.$/, "$1 张网页图片可下载。写入文章时会上传到 X。"],
+      [/^(\d+) more image\(s\)$/, "还有 $1 张图片"],
+      [/^(.+) - Needs Chrome approval$/, "$1 - 需要检查下载"],
+      [/^(.+) - Allowed$/, "$1 - 可下载"],
       [/^(\d+) remote image\(s\) across (\d+) image site\(s\)\.$/, "$1 张远程图片，来自 $2 个图片站点。"],
-      [/^Allow (.+) before importing this image\.$/, "导入这张图片前请先授权 $1。"],
-      [/^Chrome has not granted image-site access for (.+)\. Click Allow image site in xPoster, approve Chrome's prompt, then retry Import\. If this site already looks allowed, reload xPoster and reopen the side panel\.$/, "Chrome 尚未授予 $1 的图片站点访问权限。请在 xPoster 中点击授权图片站点，在 Chrome 弹窗中允许，然后重试导入。如果这里看起来已经授权，请重新加载 xPoster 并重新打开侧边栏。"],
-      [/^Chrome has not granted image-site access for (.+)\. Click Allow image site in xPoster, choose Allow in Chrome's prompt, then retry Import\. xPoster cannot convert remote Markdown image URLs into uploaded files until this site access is granted\.$/, "Chrome 尚未授予 $1 的图片站点访问权限。请在 xPoster 中点击授权图片站点，在 Chrome 弹窗中选择允许，然后重试导入。授权完成前，xPoster 无法把远程 Markdown 图片 URL 转成上传文件。"],
-      [/^Chrome has not granted image-site access for (.+)\. Click Allow image site in xPoster, choose Allow in Chrome's prompt, then retry Import\. Until this permission is allowed, xPoster cannot fetch the remote image files, so Markdown image links cannot become uploaded images in X\.$/, "Chrome 尚未授予 $1 的图片站点访问权限。请在 xPoster 中点击授权图片站点，在 Chrome 弹窗中选择允许，然后重试导入。授权完成前，xPoster 无法抓取远程图片文件，因此 Markdown 图片链接不能变成 X 里的已上传图片。"],
-      [/^Chrome has not allowed xPoster to read images from (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then retry Import\. Until this is allowed, xPoster cannot fetch the remote image files, so Markdown image links cannot become uploaded images in X\.$/, "Chrome 尚未允许 xPoster 读取 $1 的图片。请在 xPoster 中点击允许图片网站，在 Chrome 弹窗中选择允许，然后重试导入。允许之前，xPoster 无法抓取远程图片文件，因此 Markdown 图片链接不能变成 X 里的已上传图片。"],
-      [/^Chrome did not grant image website access for (.+)\. Click Import again or click Allow image website, then choose Allow in Chrome's prompt\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\.$/, "Chrome 尚未授予 $1 的图片网站访问权限。请再次点击导入，或点击允许图片网站，然后在 Chrome 弹窗中选择允许。授权前，xPoster 无法抓取图片文件，因此 Markdown 图片链接会停留为文本，不能变成 X 里的已上传图片。"],
-      [/^Chrome did not grant image website access for (.+)\. Click Allow image website, choose Allow in Chrome's prompt, then retry Import\. If Chrome already shows this website as allowed, reload the xPoster extension and reopen the side panel\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\.$/, "Chrome 尚未授予 $1 的图片网站访问权限。请点击允许图片网站，在 Chrome 弹窗中选择允许，然后重试导入。如果 Chrome 已经显示该网站已允许，请重新加载 xPoster 扩展并重新打开侧边栏。授权前，xPoster 无法抓取图片文件，因此 Markdown 图片链接会停留为文本，不能变成 X 里的已上传图片。"],
-      [/^Chrome has not allowed xPoster v(.+) to read images from (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\. If Chrome does not show a prompt, reload xPoster from chrome:\/\/extensions and reopen the side panel so the service worker uses the latest permission state\.$/, "Chrome 尚未允许 xPoster v$1 读取 $2 的图片。请在 xPoster 中点击允许图片网站，在 Chrome 弹窗中选择允许，然后点击检查下载并再次导入。这是浏览器授权步骤，不是 X 上传失败。授权前，xPoster 无法抓取图片文件，因此 Markdown 图片链接会停留为文本，不能变成 X 里的已上传图片。如果 Chrome 没有弹窗，请在 chrome://extensions 重新加载 xPoster，并重新打开侧边栏，让后台服务使用最新权限状态。"],
-      [/^Chrome has not allowed xPoster v(.+) to read images from (.+)\. Chrome reported: (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\. If Chrome does not show a prompt, reload xPoster from chrome:\/\/extensions and reopen the side panel so the service worker uses the latest permission state\.$/, "Chrome 尚未允许 xPoster v$1 读取 $2 的图片。Chrome 返回：$3。请在 xPoster 中点击允许图片网站，在 Chrome 弹窗中选择允许，然后点击检查下载并再次导入。这是浏览器授权步骤，不是 X 上传失败。授权前，xPoster 无法抓取远程图片文件，因此 Markdown 图片链接会停留为文本，不能变成 X 里的已上传图片。如果 Chrome 没有弹窗，请在 chrome://extensions 重新加载 xPoster，并重新打开侧边栏，让后台服务使用最新权限状态。"],
-      [/^Chrome has not allowed xPoster v(.+) to read images from (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\. If Chrome already shows this website as allowed, reload xPoster from chrome:\/\/extensions and reopen the side panel so the service worker uses the latest permission state\.$/, "Chrome 尚未允许 xPoster v$1 读取 $2 的图片。请在 xPoster 中点击允许图片网站，在 Chrome 弹窗中选择允许，然后点击检查下载并再次导入。这是浏览器授权步骤，不是 X 上传失败。授权前，xPoster 无法抓取图片文件，因此 Markdown 图片链接会停留为文本，不能变成 X 里的已上传图片。如果 Chrome 已经显示该网站已允许，请在 chrome://extensions 重新加载 xPoster 并重新打开侧边栏，让后台服务使用最新权限状态。"],
-      [/^Chrome has not allowed xPoster v(.+) to read images from (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\. If Chrome did not show a prompt, open chrome:\/\/extensions, reload xPoster, reopen the X Article tab and the side panel, then click Allow image website again\.$/, "Chrome 尚未允许 xPoster v$1 读取 $2 的图片。请在 xPoster 中点击允许图片网站，在 Chrome 弹窗中选择允许，然后点击检查下载并再次导入。这是浏览器授权步骤，不是 X 上传失败。授权前，xPoster 无法抓取图片文件，因此 Markdown 图片链接会停留为文本，不能变成 X 里的已上传图片。如果 Chrome 没有弹窗，请打开 chrome://extensions，重新加载 xPoster，重新打开 X 文章标签页和侧边栏，然后再次点击允许图片网站。"],
-      [/^Chrome has not allowed xPoster v(.+) to read images from (.+)\. Chrome reported: (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\. If Chrome did not show a prompt, open chrome:\/\/extensions, reload xPoster, reopen the X Article tab and the side panel, then click Allow image website again\.$/, "Chrome 尚未允许 xPoster v$1 读取 $2 的图片。Chrome 返回：$3。请在 xPoster 中点击允许图片网站，在 Chrome 弹窗中选择允许，然后点击检查下载并再次导入。这是浏览器授权步骤，不是 X 上传失败。授权前，xPoster 无法抓取远程图片文件，因此 Markdown 图片链接会停留为文本，不能变成 X 里的已上传图片。如果 Chrome 没有弹窗，请打开 chrome://extensions，重新加载 xPoster，重新打开 X 文章标签页和侧边栏，然后再次点击允许图片网站。"],
-      [/^Chrome has not granted image-site access for (.+)\. Click Allow image website in the xPoster side panel, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a Chrome permission step, not an X upload failure; until it is allowed, Markdown image links cannot become uploaded images in X\.$/, "Chrome 尚未授予 $1 的图片站点访问权限。请在 xPoster 侧边栏点击允许图片网站，在 Chrome 弹窗中选择允许，然后点击检查下载并再次导入。这是 Chrome 权限步骤，不是 X 上传失败；授权前，Markdown 图片链接不能变成 X 里的已上传图片。"],
-      [/^Chrome has not granted image-site access for (.+)\. Open the xPoster side panel, click Allow image website, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure; until it is allowed, Markdown image links cannot become uploaded images in X\.$/, "Chrome 尚未授予 $1 的图片站点访问权限。请打开 xPoster 侧边栏，点击允许图片网站，在 Chrome 弹窗中选择允许，然后点击检查下载并再次导入。这是浏览器权限步骤，不是 X 上传失败；授权前，Markdown 图片链接不能变成 X 里的已上传图片。"],
-      [/^Chrome has not allowed xPoster v(.+) to read images from (.+)\. Chrome reported: (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\. If Chrome did not show a prompt, open chrome:\/\/extensions, reload xPoster, reopen the X Article tab and the side panel, then click Allow image website again\.$/, "Chrome 尚未允许 xPoster v$1 读取来自 $2 的图片。Chrome 返回：$3。请在 xPoster 中点击允许图片网站，在 Chrome 弹窗中选择允许，然后点击检查下载并再次导入。这是浏览器权限步骤，不是 X 上传失败。Chrome 允许这个网站前，xPoster 无法抓取图片文件，因此 Markdown 图片链接会保持文本，不能变成 X 里的已上传图片。如果 Chrome 没有弹窗，请打开 chrome://extensions，重新加载 xPoster，重新打开 X 文章标签页和侧边栏，然后再次点击允许图片网站。"],
-      [/^Chrome has not allowed xPoster v(.+) to read images from (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\. If Chrome did not show a prompt, open chrome:\/\/extensions, reload xPoster, reopen the X Article tab and the side panel, then click Allow image website again\.$/, "Chrome 尚未允许 xPoster v$1 读取来自 $2 的图片。请在 xPoster 中点击允许图片网站，在 Chrome 弹窗中选择允许，然后点击检查下载并再次导入。这是浏览器权限步骤，不是 X 上传失败。Chrome 允许这个网站前，xPoster 无法抓取图片文件，因此 Markdown 图片链接会保持文本，不能变成 X 里的已上传图片。如果 Chrome 没有弹窗，请打开 chrome://extensions，重新加载 xPoster，重新打开 X 文章标签页和侧边栏，然后再次点击允许图片网站。"],
-      [/^xPoster v(.+) can only request remote image access for image websites declared in manifest\.json\. This draft uses (.+), which is not declared in this build\. Add that image host to optional_host_permissions, reload xPoster, then retry Import\.$/, "xPoster v$1 只能请求 manifest.json 中声明过的图片网站权限。这篇草稿使用了 $2，但当前版本没有声明这个站点。请把该图床加入 optional_host_permissions，重新加载 xPoster，然后重试导入。"],
-      [/^Chrome has not granted image-site access for (.+)\. Open the xPoster side panel, click Allow image website, choose Allow in Chrome's prompt, then retry Import\. If Chrome already shows this website as allowed, reload the xPoster extension and reopen the side panel\.$/, "Chrome 尚未授予 $1 的图片站点访问权限。请打开 xPoster 侧边栏，点击允许图片网站，在 Chrome 弹窗中选择允许，然后重试导入。如果 Chrome 已显示该网站已允许，请重新加载 xPoster 扩展并重新打开侧边栏。"],
+      [/^Allow (.+) before importing this image\.$/, "导入这张图片前请确认 $1 可下载。"],
+      [/^Chrome has not granted image-site access for (.+)\. Click Allow image site in xPoster, approve Chrome's prompt, then retry Import\. If this site already looks allowed, reload xPoster and reopen the side panel\.$/, "$1 的图片无法下载。请检查下载结果，或替换为公开可访问链接后重试。"],
+      [/^Chrome has not granted image-site access for (.+)\. Click Allow image site in xPoster, choose Allow in Chrome's prompt, then retry Import\. xPoster cannot convert remote Markdown image URLs into uploaded files until this site access is granted\.$/, "$1 的图片无法下载。xPoster 会保留 Markdown 图片链接；替换为公开可访问链接后可再次写入。"],
+      [/^Chrome has not granted image-site access for (.+)\. Click Allow image site in xPoster, choose Allow in Chrome's prompt, then retry Import\. Until this permission is allowed, xPoster cannot fetch the remote image files, so Markdown image links cannot become uploaded images in X\.$/, "$1 的图片无法下载。下载成功前，Markdown 图片链接会保留为链接。"],
+      [/^Chrome has not allowed xPoster to read images from (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then retry Import\. Until this is allowed, xPoster cannot fetch the remote image files, so Markdown image links cannot become uploaded images in X\.$/, "$1 的图片无法下载。下载成功前，Markdown 图片链接会保留为链接。"],
+      [/^Chrome did not grant image website access for (.+)\. Click Import again or click Allow image website, then choose Allow in Chrome's prompt\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\.$/, "$1 的图片无法下载。再次写入会继续尝试，失败时 Markdown 图片链接会保留为链接。"],
+      [/^Chrome did not grant image website access for (.+)\. Click Allow image website, choose Allow in Chrome's prompt, then retry Import\. If Chrome already shows this website as allowed, reload the xPoster extension and reopen the side panel\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\.$/, "$1 的图片无法下载。请替换为公开可访问链接后重试；失败时 Markdown 图片链接会保留为链接。"],
+      [/^Chrome has not allowed xPoster v(.+) to read images from (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\. If Chrome does not show a prompt, reload xPoster from chrome:\/\/extensions and reopen the side panel so the service worker uses the latest permission state\.$/, "xPoster v$1 无法下载 $2 的图片。请检查下载或替换为公开可访问链接；失败时 Markdown 图片链接会保留为链接。"],
+      [/^Chrome has not allowed xPoster v(.+) to read images from (.+)\. Chrome reported: (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\. If Chrome does not show a prompt, reload xPoster from chrome:\/\/extensions and reopen the side panel so the service worker uses the latest permission state\.$/, "xPoster v$1 无法下载 $2 的图片。Chrome 返回：$3。请检查下载或替换为公开可访问链接；失败时 Markdown 图片链接会保留为链接。"],
+      [/^Chrome has not allowed xPoster v(.+) to read images from (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\. If Chrome already shows this website as allowed, reload xPoster from chrome:\/\/extensions and reopen the side panel so the service worker uses the latest permission state\.$/, "xPoster v$1 无法下载 $2 的图片。请检查下载或替换为公开可访问链接；失败时 Markdown 图片链接会保留为链接。"],
+      [/^Chrome has not allowed xPoster v(.+) to read images from (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\. If Chrome did not show a prompt, open chrome:\/\/extensions, reload xPoster, reopen the X Article tab and the side panel, then click Allow image website again\.$/, "xPoster v$1 无法下载 $2 的图片。请检查下载或替换为公开可访问链接；失败时 Markdown 图片链接会保留为链接。"],
+      [/^Chrome has not allowed xPoster v(.+) to read images from (.+)\. Chrome reported: (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\. If Chrome did not show a prompt, open chrome:\/\/extensions, reload xPoster, reopen the X Article tab and the side panel, then click Allow image website again\.$/, "xPoster v$1 无法下载 $2 的图片。Chrome 返回：$3。请检查下载或替换为公开可访问链接；失败时 Markdown 图片链接会保留为链接。"],
+      [/^Chrome has not granted image-site access for (.+)\. Click Allow image website in the xPoster side panel, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a Chrome permission step, not an X upload failure; until it is allowed, Markdown image links cannot become uploaded images in X\.$/, "$1 的图片无法下载。请检查下载或替换为公开可访问链接；失败时 Markdown 图片链接会保留为链接。"],
+      [/^Chrome has not granted image-site access for (.+)\. Open the xPoster side panel, click Allow image website, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure; until it is allowed, Markdown image links cannot become uploaded images in X\.$/, "$1 的图片无法下载。请检查下载或替换为公开可访问链接；失败时 Markdown 图片链接会保留为链接。"],
+      [/^Chrome has not allowed xPoster v(.+) to read images from (.+)\. Chrome reported: (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\. If Chrome did not show a prompt, open chrome:\/\/extensions, reload xPoster, reopen the X Article tab and the side panel, then click Allow image website again\.$/, "xPoster v$1 无法下载 $2 的图片。Chrome 返回：$3。请检查下载或替换为公开可访问链接；失败时 Markdown 图片链接会保留为链接。"],
+      [/^Chrome has not allowed xPoster v(.+) to read images from (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\. If Chrome did not show a prompt, open chrome:\/\/extensions, reload xPoster, reopen the X Article tab and the side panel, then click Allow image website again\.$/, "xPoster v$1 无法下载 $2 的图片。请检查下载或替换为公开可访问链接；失败时 Markdown 图片链接会保留为链接。"],
+      [/^xPoster v(.+) can only request remote image access for image websites declared in manifest\.json\. This draft uses (.+), which is not declared in this build\. Add that image host to optional_host_permissions, reload xPoster, then retry Import\.$/, "xPoster v$1 无法下载 $2 的图片。请替换为公开可访问链接后重试。"],
+      [/^Chrome has not granted image-site access for (.+)\. Open the xPoster side panel, click Allow image website, choose Allow in Chrome's prompt, then retry Import\. If Chrome already shows this website as allowed, reload the xPoster extension and reopen the side panel\.$/, "$1 的图片无法下载。请检查下载或替换为公开可访问链接后重试。"],
       [/^(\d+) special block\(s\), (\d+) image\(s\), (\d+) table image\(s\), (\d+) tweet embed\(s\)\.$/, "$1 个特殊块，$2 张图片，$3 张表格图片，$4 个推文嵌入。"],
       [/^(\d+) more ledger item\(s\)$/, "还有 $1 个导入项"],
       [/^(\d+) more import item\(s\)$/, "还有 $1 个导入项"],
@@ -1744,25 +1798,6 @@ console.log("示例代码块");
     return Array.from(remoteImageOriginCounts(parsed).keys());
   }
 
-  function declaredOptionalRemoteImageOrigins() {
-    if (typeof chrome === "undefined" || !chrome.runtime?.getManifest) return [];
-    return (chrome.runtime.getManifest().optional_host_permissions || [])
-      .map((pattern) => {
-        try {
-          return new URL(pattern.replace(/\*.*$/, "")).origin;
-        } catch {
-          return "";
-        }
-      })
-      .filter(Boolean);
-  }
-
-  function unsupportedRemoteImageOrigins(origins) {
-    const declared = new Set(declaredOptionalRemoteImageOrigins());
-    if (!declared.size) return [];
-    return origins.filter((origin) => !declared.has(origin));
-  }
-
   function remoteImageProbeKey(segment) {
     return String(segment?.source || "");
   }
@@ -1803,7 +1838,7 @@ console.log("示例代码块");
   function remoteImageProbeReady(parsed = latestParsed) {
     const images = remoteHttpImageSegments(parsed);
     if (!images.length) return true;
-    if (remoteImageProbeStatus.state !== "checked") return false;
+    if (remoteImageProbeStatus.state !== "checked") return true;
     if (remoteImageProbeStatus.fail) return false;
     return images.every((segment) => {
       const source = remoteImageProbeKey(segment);
@@ -1818,7 +1853,7 @@ console.log("示例代码块");
     if (remoteImageProbeStatus.state === "checked") {
       return `${total} web image(s) checked: ${remoteImageProbeStatus.ok} ready, ${remoteImageProbeStatus.fail} failed.`;
     }
-    return "Remote image URLs are allowed, but image upload has not been tried yet.";
+    return "xPoster will try to download these images while writing. Failed downloads stay as Markdown links.";
   }
 
   function remoteImageFailureHint(item = {}) {
@@ -1844,21 +1879,6 @@ console.log("示例代码块");
     const images = remoteHttpImageSegments(parsed);
     resetRemoteImageProbeStatus(parsed);
     if (!images.length) return { ok: true, total: 0, results: [] };
-    const missing = remoteImageOrigins(parsed).filter((origin) => !(remotePermissionStatus.granted || []).includes(origin));
-    if (missing.length) {
-      remoteImageProbeStatus = {
-        ...remoteImageProbeStatus,
-        state: "blocked",
-        checkedAt: new Date().toISOString()
-      };
-      return {
-        ok: false,
-        total: images.length,
-        missing,
-        results: remoteImageProbeStatus.results,
-        error: "Remote image check requires image website approval first."
-      };
-    }
 
     remoteImageProbeStatus = {
       ...remoteImageProbeStatus,
@@ -1943,7 +1963,7 @@ console.log("示例代码块");
       const parsed = shared.parseMarkdown(markdown);
       latestParsed = parsed;
       latestCounts = shared.segmentCounts(parsed.segments);
-      syncRemotePermissionStatusFromDraft(parsed);
+      syncRemoteImageAccessStatusFromDraft(parsed);
       return parsed;
     } catch (error) {
       log(`Could not analyze draft: ${error?.message || error}`);
@@ -1951,44 +1971,125 @@ console.log("示例代码块");
     }
   }
 
-  function syncRemotePermissionStatusFromDraft(parsed = latestParsed) {
+  function draftFingerprint(markdown) {
+    const value = String(markdown || "");
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return `${value.length}-${(hash >>> 0).toString(36)}`;
+  }
+
+  function draftSourceLabel(source = "typed") {
+    const labels = {
+      file: "File",
+      "drop-file": "Dropped file",
+      drop: "Dropped text",
+      paste: "Pasted text",
+      example: "Example draft",
+      restored: "Restored draft",
+      typed: "Typed draft"
+    };
+    return labels[source] || "Draft";
+  }
+
+  function buildDraftHistoryEvidence(source = "typed", extra = {}) {
+    const markdown = els.markdown.value || "";
+    const parsed = latestParsed || ensureLatestParsedFromDraft();
+    const counts = latestCounts || shared.segmentCounts(parsed?.segments || []);
+    const remoteImages = remoteHttpImageSegments(parsed);
+    const localImages = parsed?.segments?.filter((segment) => segment.type === "image" && shared.isLocalImageSource(segment.source)).length || 0;
+    const fingerprint = draftFingerprint(markdown);
+    const now = new Date().toISOString();
+    return {
+      kind: "draft-loaded",
+      capturedAt: now,
+      updatedAt: now,
+      draftRecordId: activeDraftRecordId,
+      draftFingerprint: fingerprint,
+      source: {
+        type: source,
+        label: draftSourceLabel(source),
+        fileName: extra.fileName || null,
+        size: extra.size || markdown.length
+      },
+      draft: {
+        title: parsed?.title || null,
+        cover: parsed?.cover || null,
+        counts,
+        blocks: parsed?.segments?.length || 0,
+        characters: markdown.length,
+        remoteImages: {
+          count: remoteImages.length,
+          origins: remoteImageOrigins(parsed),
+          access: remoteImageAccessStatus,
+          probe: remoteImageProbeStatus
+        },
+        localImages
+      },
+      importPlan: buildPreviewPlan(parsed),
+      importLedger: buildImportLedger(parsed, counts),
+      targetContext: buildTargetContextEvidence(),
+      ...extra
+    };
+  }
+
+  function rememberDraftHistory(source = "typed", extra = {}) {
+    const markdown = els.markdown.value || "";
+    if (!markdown.trim() || !latestParsed?.segments?.length) return null;
+    const { forceNew = false, ...details } = extra || {};
+    const fingerprint = draftFingerprint(markdown);
+    if (forceNew || activeDraftFinalized || !activeDraftRecordId) {
+      activeDraftRecordId = `draft-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      activeDraftFinalized = false;
+    }
+    activeDraftFingerprint = fingerprint;
+    const evidence = buildDraftHistoryEvidence(source, {
+      ...details,
+      draftRecordId: activeDraftRecordId,
+      draftFingerprint: fingerprint
+    });
+    addRecordHistoryEntry(evidence);
+    return evidence;
+  }
+
+  function ensureActiveDraftRecordId() {
+    if (activeDraftRecordId) return activeDraftRecordId;
+    activeDraftRecordId = `draft-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    activeDraftFingerprint = draftFingerprint(els.markdown.value || "");
+    activeDraftFinalized = false;
+    return activeDraftRecordId;
+  }
+
+  function scheduleDraftHistory(source = "typed", extra = {}) {
+    window.clearTimeout(draftInputHistoryTimer);
+    draftInputHistoryTimer = window.setTimeout(() => {
+      rememberDraftHistory(source, extra);
+    }, 700);
+  }
+
+  function syncRemoteImageAccessStatusFromDraft(parsed = latestParsed) {
     const origins = remoteImageOrigins(parsed);
-    remotePermissionStatus = {
+    remoteImageAccessStatus = {
       origins,
-      granted: [],
-      missing: origins,
+      available: origins,
+      missing: [],
       checkedAt: null
     };
     resetRemoteImageProbeStatus(parsed);
   }
 
-  async function refreshRemoteImagePermissionStatus(parsed = latestParsed) {
+  async function refreshRemoteImageAccessStatus(parsed = latestParsed) {
     const origins = remoteImageOrigins(parsed);
-    if (!origins.length) {
-      remotePermissionStatus = { origins: [], granted: [], missing: [], checkedAt: null };
-      updatePreflight();
-      return remotePermissionStatus;
-    }
-    if (typeof chrome === "undefined" || !chrome.permissions?.contains) {
-      remotePermissionStatus = { origins, granted: [], missing: origins, checkedAt: new Date().toISOString() };
-      updatePreflight();
-      return remotePermissionStatus;
-    }
-    const { granted, missing } = await checkRemoteImageOrigins(origins);
-    remotePermissionStatus = {
+    remoteImageAccessStatus = {
       origins,
-      granted,
-      missing,
+      available: origins,
+      missing: [],
       checkedAt: new Date().toISOString()
     };
     updatePreflight();
-    return remotePermissionStatus;
-  }
-
-  function remoteImagePermissionError(missingOrigins, requestError = "") {
-    const origins = (missingOrigins || []).filter(Boolean).join(", ") || "the remote image site";
-    const chromeDetail = requestError ? ` Chrome reported: ${requestError}.` : "";
-    return `Chrome has not allowed xPoster v${EXTENSION_VERSION} to read images from ${origins}.${chromeDetail} Click Allow image website in xPoster, then choose Allow in Chrome's prompt. The article can still be written; those Markdown image links will stay as text until Chrome allows this website. If Chrome did not show a prompt, open chrome://extensions, reload xPoster, reopen the X Article tab and the side panel, then click Allow image website again.`;
+    return remoteImageAccessStatus;
   }
 
   function originalImporterResidueStatus() {
@@ -2009,18 +2110,6 @@ console.log("示例代码块");
     };
   }
 
-  function unsupportedRemoteImageOriginError(origins) {
-    const labels = (origins || []).filter(Boolean).join(", ") || "an undeclared image website";
-    return `xPoster v${EXTENSION_VERSION} can only request remote image access for image websites declared in manifest.json. This draft uses ${labels}, which is not declared in this build. Add that image host to optional_host_permissions, reload xPoster, then retry Import.`;
-  }
-
-  function formatHostList(origins) {
-    const hosts = (origins || []).filter(Boolean).map(hostLabel);
-    if (!hosts.length) return "this image website";
-    if (hosts.length === 1) return hosts[0];
-    return `${hosts.slice(0, 2).join(", ")}${hosts.length > 2 ? ` +${hosts.length - 2}` : ""}`;
-  }
-
   function revealRemotePermissionPanel() {
     if (!els.remotePermissionPanel) return;
     updateProgressiveSections();
@@ -2032,10 +2121,6 @@ console.log("示例代码块");
     return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
-  function permissionOriginPattern(origin) {
-    return `${String(origin || "").replace(/\/+$/, "")}/*`;
-  }
-
   function hostLabel(origin) {
     try {
       return new URL(origin).host || origin;
@@ -2044,221 +2129,11 @@ console.log("示例代码块");
     }
   }
 
-  function permissionPatternMatchesOrigin(pattern, origin) {
-    if (!pattern || !origin) return false;
-    if (pattern === "<all_urls>") return true;
-    const normalizedPattern = String(pattern).replace(/\/+$/, "");
-    const normalizedOrigin = String(origin).replace(/\/+$/, "");
-    if (normalizedPattern === normalizedOrigin || normalizedPattern === `${normalizedOrigin}/*`) return true;
-    try {
-      const patternUrl = new URL(normalizedPattern.replace(/\*.*$/, ""));
-      return patternUrl.origin === normalizedOrigin;
-    } catch {
-      return false;
-    }
-  }
-
-  async function remoteOriginAllowed(origin) {
-    if (typeof chrome === "undefined" || !chrome.permissions) return false;
-    const pattern = permissionOriginPattern(origin);
-    const contains = await chrome.permissions.contains?.({ origins: [pattern] }).catch(() => false);
-    if (contains) return true;
-    const all = await chrome.permissions.getAll?.().catch(() => null);
-    const grantedOrigins = all?.origins || [];
-    return grantedOrigins.some((grantedPattern) => permissionPatternMatchesOrigin(grantedPattern, origin));
-  }
-
-  async function checkRemoteImageOrigins(origins) {
-    const results = await Promise.all(
-      origins.map(async (origin) => {
-        const allowed = await remoteOriginAllowed(origin);
-        return { origin, allowed };
-      })
-    );
-    const granted = new Set(results.filter((item) => item.allowed).map((item) => item.origin));
-    let missing = results.filter((item) => !item.allowed).map((item) => item.origin);
-    if (missing.length && hasChromeApi()) {
-      try {
-        const workerStatus = await chrome.runtime.sendMessage({
-          type: "xposter:remote-image-permission-status",
-          origins
-        });
-        for (const origin of workerStatus?.granted || []) granted.add(origin);
-        missing = origins.filter((origin) => !granted.has(origin));
-      } catch {}
-    }
-    return {
-      granted: origins.filter((origin) => granted.has(origin)),
-      missing
-    };
-  }
-
-  async function checkRemoteImageOriginsWithRetry(origins, delays = [0, 200, 600, 1200, 2400, 4000]) {
-    let latest = { granted: [], missing: origins };
-    for (const waitMs of delays) {
-      if (waitMs) await delay(waitMs);
-      latest = await checkRemoteImageOrigins(origins);
-      if (!latest.missing.length) break;
-    }
-    return latest;
-  }
-
-  function applyRemotePermissionStatus(origins, granted = [], missing = origins) {
-    const grantedSet = new Set(granted || []);
-    const missingSet = new Set(missing || []);
-    remotePermissionStatus = {
-      origins,
-      granted: origins.filter((origin) => grantedSet.has(origin)),
-      missing: origins.filter((origin) => missingSet.has(origin)),
-      checkedAt: new Date().toISOString()
-    };
-    updatePreflight();
-    return remotePermissionStatus;
-  }
-
-  async function refreshRemotePermissionStatusBeforeAction(parsed = latestParsed) {
-    if (!remoteHttpImageSegments(parsed).length) return null;
-    if (!hasChromeApi() || remotePermissionStatus.checkedAt === null) return null;
-    return refreshRemoteImagePermissionStatus(parsed);
-  }
-
-  async function ensureRemoteImagePermissionsForDraft(parsed = latestParsed, options = {}) {
-    const { requestImmediately = false, requestIfMissing = false } = options || {};
-    const remoteImages = remoteHttpImageSegments(parsed);
-    if (!remoteImages.length) {
-      return { ok: true, origins: [] };
-    }
-    const origins = Array.from(
-      new Set(
-        remoteImages
-          .map((segment) => {
-            try {
-              return new URL(segment.source).origin;
-            } catch {
-              return null;
-            }
-          })
-          .filter(Boolean)
-      )
-    );
-    if (!origins.length) return { ok: true, origins: [] };
-    const unsupportedOrigins = unsupportedRemoteImageOrigins(origins);
-    if (hasChromeApi() && requestImmediately) {
-      applyRemotePermissionStatus(origins, remotePermissionStatus.granted || [], remotePermissionStatus.missing || origins);
-    } else if (hasChromeApi()) {
-      const initialStatus = await checkRemoteImageOriginsWithRetry(origins, [0]);
-      applyRemotePermissionStatus(origins, initialStatus.granted, initialStatus.missing);
-    } else {
-      applyRemotePermissionStatus(origins, [], origins);
-    }
-    if (unsupportedOrigins.length) {
-      const knownGranted = new Set(remotePermissionStatus.granted || []);
-      remotePermissionStatus = {
-        origins,
-        granted: origins.filter((origin) => !unsupportedOrigins.includes(origin) && knownGranted.has(origin)),
-        missing: unsupportedOrigins,
-        checkedAt: new Date().toISOString()
-      };
-      updatePreflight();
-      return {
-        ok: false,
-        origins,
-        granted: remotePermissionStatus.granted,
-        missing: unsupportedOrigins,
-        unsupported: unsupportedOrigins,
-        requestAccepted: false,
-        requestError: "",
-        error: unsupportedRemoteImageOriginError(unsupportedOrigins)
-      };
-    }
-    if (!remotePermissionStatus.missing.length) {
-      return {
-        ok: true,
-        origins,
-        granted: remotePermissionStatus.granted,
-        missing: [],
-        requestAccepted: false,
-        alreadyGranted: true,
-        requestError: "",
-        error: null
-      };
-    }
-    if (!requestImmediately && !requestIfMissing) {
-      return {
-        ok: false,
-        origins,
-        granted: remotePermissionStatus.granted || [],
-        missing: remotePermissionStatus.missing || origins,
-        requestAccepted: false,
-        alreadyGranted: false,
-        requestError: "",
-        error: remoteImagePermissionError(remotePermissionStatus.missing || origins)
-      };
-    }
-    if (typeof chrome === "undefined" || !chrome.permissions?.request) {
-      return {
-        ok: false,
-        origins,
-        granted: remotePermissionStatus.granted || [],
-        missing: remotePermissionStatus.missing || origins,
-        error: "Remote image access can only be granted from the installed xPoster extension side panel."
-      };
-    }
-
-    // When this function is called from the explicit "Allow image website"
-    // click, request immediately. Chrome may reject permission requests that
-    // happen after awaited status probes because the user gesture can be lost.
-    const originsToRequest = requestImmediately ? origins : (remotePermissionStatus.missing || origins);
-    const requestedOrigins = originsToRequest.map(permissionOriginPattern);
-    let requestAccepted = false;
-    let requestError = "";
-    try {
-      log(`Chrome is asking for image access: ${originsToRequest.join(", ")}`);
-      requestAccepted = await chrome.permissions.request({ origins: requestedOrigins });
-    } catch (error) {
-      requestError = error?.message || String(error);
-    }
-
-    const finalStatus = await checkRemoteImageOriginsWithRetry(
-      origins,
-      requestAccepted ? undefined : [0, 200, 600]
-    );
-    applyRemotePermissionStatus(origins, finalStatus.granted, finalStatus.missing);
-    const missingOrigins = finalStatus.missing;
-    const allowedOrigins = finalStatus.granted;
-    const alreadyGranted = !missingOrigins.length && !requestAccepted;
-    return {
-      ok: missingOrigins.length === 0,
-      origins,
-      granted: allowedOrigins,
-      missing: missingOrigins,
-      requestAccepted,
-      alreadyGranted,
-      requestError,
-      error: missingOrigins.length === 0
-        ? null
-        : remoteImagePermissionError(missingOrigins, requestError)
-    };
-  }
-
   async function runRemoteImageCheckAction() {
     const parsed = ensureLatestParsedFromDraft();
     if (!remoteHttpImageSegments(parsed).length) {
       log("No remote image URLs detected.");
       return { ok: true, total: 0 };
-    }
-    const result = await ensureRemoteImagePermissionsForDraft(parsed, { requestImmediately: true });
-    if (!result.ok) {
-      await refreshRemoteImagePermissionStatus(parsed);
-      revealRemotePermissionPanel();
-      log(result.error);
-      captureEvidence("remote-image-permission-blocked", {
-        reason: result.error,
-        origins: result.origins,
-        missing: result.missing || [],
-        status: remotePermissionStatus
-      });
-      return { ok: false, error: result.error };
     }
     log("Checking remote images...");
     const probe = await probeRemoteImagesForDraft(parsed);
@@ -2267,7 +2142,6 @@ console.log("示例代码块");
       log(`Remote image check passed for ${probe.total} image(s).`);
       captureEvidence("remote-image-check", {
         result: probe,
-        permission: remotePermissionStatus,
         probe: remoteImageProbeStatus
       });
       return probe;
@@ -2276,43 +2150,9 @@ console.log("示例代码块");
     log(`Remote image check failed before import: ${probe.error}.`);
     captureEvidence("remote-image-check-blocked", {
       result: probe,
-      permission: remotePermissionStatus,
       probe: remoteImageProbeStatus
     });
     return probe;
-  }
-
-  async function runRemotePermissionAction() {
-    const parsed = ensureLatestParsedFromDraft();
-    const result = await ensureRemoteImagePermissionsForDraft(parsed, { requestImmediately: true });
-    let probe = null;
-    if (result.ok && remoteHttpImageSegments(parsed).length) {
-      probe = await probeRemoteImagesForDraft(parsed);
-    }
-    if (result.ok) {
-      revealRemotePermissionPanel();
-      log(result.alreadyGranted ? "Image website already allowed." : "Image website allowed.");
-      if (probe?.ok) log(`Remote image check passed for ${probe.total} image(s).`);
-      if (probe && !probe.ok) log(`Remote image check failed before import: ${probe.error}.`);
-      captureEvidence(probe && !probe.ok ? "remote-image-check-blocked" : "remote-image-permission", {
-        origins: result.origins || [],
-        granted: result.granted || [],
-        status: remotePermissionStatus,
-        probe: remoteImageProbeStatus,
-        result: probe
-      });
-      return { ok: !probe || probe.ok, result, probe };
-    }
-    await refreshRemoteImagePermissionStatus(parsed);
-    revealRemotePermissionPanel();
-    log(result.error);
-    captureEvidence("remote-image-permission-blocked", {
-      reason: result.error,
-      origins: result.origins,
-      missing: result.missing || [],
-      status: remotePermissionStatus
-    });
-    return { ok: false, error: result.error, result, probe };
   }
 
   function currentVault() {
@@ -2344,7 +2184,7 @@ console.log("示例代码块");
       latestParsed = null;
       latestCounts = shared.segmentCounts([]);
       els.inspector?.setAttribute("data-has-draft", "false");
-      syncRemotePermissionStatusFromDraft(null);
+      syncRemoteImageAccessStatusFromDraft(null);
       els.titleMetric.textContent = "None";
       els.imageMetric.textContent = "0";
       els.tableMetric.textContent = "0";
@@ -2365,9 +2205,9 @@ console.log("示例代码块");
       latestParsed = parsed;
       latestCounts = counts;
       els.inspector?.setAttribute("data-has-draft", "true");
-      syncRemotePermissionStatusFromDraft(parsed);
+      syncRemoteImageAccessStatusFromDraft(parsed);
       if (hasChromeApi() && remoteHttpImageSegments(parsed).length) {
-        refreshRemoteImagePermissionStatus(parsed).catch(() => {});
+        refreshRemoteImageAccessStatus(parsed).catch(() => {});
       }
       els.titleMetric.textContent = parsed.title || "None";
       els.imageMetric.textContent = String(counts.image || 0);
@@ -2415,132 +2255,101 @@ console.log("示例代码块");
       els.remotePermissionPanel.dataset.tone = "idle";
       els.remotePermissionMeta.textContent = "No remote image URLs detected.";
       els.remotePermissionList.innerHTML = `<li data-tone="idle"><strong>No web images</strong><span>No remote image URLs detected.</span></li>`;
-      els.allowRemoteImages.disabled = true;
       if (els.checkRemoteImages) els.checkRemoteImages.disabled = true;
       translateDynamicDom(els.remotePermissionPanel);
       return;
     }
 
-    const granted = new Set(remotePermissionStatus.granted || []);
-    const missing = origins.filter((origin) => !granted.has(origin));
-    const probeFailed = !missing.length && remoteImageProbeStatus.fail > 0;
-    const tone = missing.length ? "warn" : probeFailed ? "error" : "ok";
+    const probeFailed = remoteImageProbeStatus.fail > 0;
+    const tone = probeFailed ? "error" : remoteImageProbeStatus.state === "checked" ? "ok" : "warn";
     const totalImages = Array.from(originCounts.values()).reduce((sum, count) => sum + count, 0);
     els.remotePermissionPanel.hidden = false;
     els.remotePermissionPanel.dataset.tone = tone;
-    const canRequestRemotePermission = typeof chrome !== "undefined" && Boolean(chrome.permissions?.request);
-    els.remotePermissionMeta.textContent = missing.length
-      ? canRequestRemotePermission
-        ? totalImages === 1
-          ? `Allow this image website now? 1 web image from ${formatHostList(missing)} stayed as a Markdown link.`
-          : `Allow this image website now? ${totalImages} web image(s) from ${formatHostList(missing)} stayed as Markdown links.`
-        : "Open the installed xPoster side panel to allow this image website."
-      : remotePermissionStatus.checkedAt === null
-        ? "Click Allow image website. Chrome will ask once for this image website."
-        : remoteImageProbeStatus.state === "checked"
-          ? probeFailed
-            ? `${totalImages} web image(s) are allowed, but ${remoteImageProbeStatus.fail} could not be downloaded.`
-            : totalImages === 1
-              ? "1 web image is ready. Write again to upload it into X."
-              : `${totalImages} web image(s) are ready. Write again to upload them into X.`
-          : "Image website allowed. Write again to upload those images into X.";
+    els.remotePermissionMeta.textContent = remoteImageProbeStatus.state === "checked"
+      ? probeFailed
+        ? `${totalImages} web image(s) checked: ${remoteImageProbeStatus.ok} ready, ${remoteImageProbeStatus.fail} will stay as Markdown links unless the URLs are replaced.`
+        : totalImages === 1
+          ? "1 web image is downloadable. Write article to upload it into X."
+          : `${totalImages} web image(s) are downloadable. Write article to upload them into X.`
+      : `${totalImages} web image(s) detected. xPoster will try to download public images while writing; failed downloads stay as Markdown links.`;
     els.remotePermissionList.innerHTML = origins
       .map((origin) => {
-        const isGranted = granted.has(origin);
         const count = originCounts.get(origin) || 0;
         const host = hostLabel(origin);
         return `
-          <li data-tone="${isGranted ? "ok" : "warn"}">
-          <strong>${shared.escapeHtml(isGranted ? "Image website allowed" : "Image website needs approval")}</strong>
-          <span>${shared.escapeHtml(`${host} - ${countLabel(count, "image")}. xPoster only asks for this image website.`)}</span>
+          <li data-tone="ok">
+          <strong>${shared.escapeHtml("Web image source")}</strong>
+          <span>${shared.escapeHtml(`${host} - ${countLabel(count, "image")}. xPoster fetches without site cookies and then lets X upload the file.`)}</span>
           </li>
         `;
       })
       .join("");
-    if (missing.length) {
+    const probeRows = (remoteImageProbeStatus.results || []).slice(0, 8);
+    els.remotePermissionList.innerHTML += `
+      <li data-tone="${probeFailed ? "error" : remoteImageProbeStatus.state === "checked" ? "ok" : "warn"}">
+        <strong>${shared.escapeHtml("Image check")}</strong>
+        <span>${shared.escapeHtml(remoteImageProbeSummary())}</span>
+      </li>
+    `;
+    if (probeFailed) {
       els.remotePermissionList.innerHTML += `
-        <li data-tone="warn">
-          <strong>${shared.escapeHtml("What to do next")}</strong>
-          <span>${shared.escapeHtml("Click Allow image website. Chrome will ask once; choose Allow, then write again.")}</span>
-        </li>
-        <li data-tone="idle">
-          <strong>${shared.escapeHtml("Fallback")}</strong>
-          <span>${shared.escapeHtml("The article can still be written now; those web images will stay as Markdown links.")}</span>
+        <li data-tone="error">
+          <strong>${shared.escapeHtml("Some downloads failed")}</strong>
+          <span>${shared.escapeHtml("Write can continue. Failed images stay as Markdown links; replace private, expired, or anti-hotlink URLs with public links if they must upload.")}</span>
         </li>
       `;
-    } else {
-      const probeRows = (remoteImageProbeStatus.results || []).slice(0, 8);
-      els.remotePermissionList.innerHTML += `
-        <li data-tone="${probeFailed ? "error" : remoteImageProbeStatus.state === "checked" ? "ok" : "warn"}">
-          <strong>${shared.escapeHtml("Image check")}</strong>
-          <span>${shared.escapeHtml(remoteImageProbeSummary())}</span>
-        </li>
-      `;
-      if (probeFailed) {
-        els.remotePermissionList.innerHTML += `
-          <li data-tone="error">
-            <strong>${shared.escapeHtml("Images recognized, files blocked")}</strong>
-            <span>${shared.escapeHtml("Some web images are still links. Try image upload again, or replace unreachable image URLs with public links.")}</span>
-          </li>
-        `;
-      }
-      els.remotePermissionList.innerHTML += probeRows
-        .map((item) => {
-          const itemTone = item.ok === true ? "ok" : item.ok === false ? "error" : "warn";
-          const status = item.ok === true
-            ? `Image ${item.index} ready: ${item.fileName} (${formatBytes(item.bytes)}).`
-            : item.ok === false
-              ? `Image ${item.index} failed: ${item.error}.`
-              : `Image ${item.index} not checked yet.`;
-          return `
-            <li data-tone="${itemTone}">
-              <strong>${shared.escapeHtml(item.fileName || `Image ${item.index}`)}</strong>
-              <span>${shared.escapeHtml(status)}</span>
-            </li>
-          `;
-        })
-        .join("");
-      if ((remoteImageProbeStatus.results || []).length > probeRows.length) {
-        els.remotePermissionList.innerHTML += `
-          <li data-tone="idle">
-            <strong>${shared.escapeHtml(`${remoteImageProbeStatus.results.length - probeRows.length} more image(s)`)}</strong>
-            <span>${shared.escapeHtml("The saved record includes the full image check result.")}</span>
-          </li>
-        `;
-      }
     }
-    els.allowRemoteImages.disabled = !missing.length || !canRequestRemotePermission;
-    els.allowRemoteImages.textContent = missing.length ? "Allow image website" : "Allowed";
+    els.remotePermissionList.innerHTML += probeRows
+      .map((item) => {
+        const itemTone = item.ok === true ? "ok" : item.ok === false ? "error" : "warn";
+        const status = item.ok === true
+          ? `Image ${item.index} ready: ${item.fileName} (${formatBytes(item.bytes)}).`
+          : item.ok === false
+            ? `Image ${item.index} failed: ${item.error}.`
+            : `Image ${item.index} will be tried during Write.`;
+        return `
+          <li data-tone="${itemTone}">
+            <strong>${shared.escapeHtml(item.fileName || `Image ${item.index}`)}</strong>
+            <span>${shared.escapeHtml(status)}</span>
+          </li>
+        `;
+      })
+      .join("");
+    if ((remoteImageProbeStatus.results || []).length > probeRows.length) {
+      els.remotePermissionList.innerHTML += `
+        <li data-tone="idle">
+          <strong>${shared.escapeHtml(`${remoteImageProbeStatus.results.length - probeRows.length} more image(s)`)}</strong>
+          <span>${shared.escapeHtml("The saved record includes the full image check result.")}</span>
+        </li>
+      `;
+    }
     if (els.checkRemoteImages) {
       els.checkRemoteImages.disabled =
-        Boolean(missing.length) ||
-        !canRequestRemotePermission ||
         remoteImageProbeStatus.state === "checking";
       els.checkRemoteImages.textContent =
         remoteImageProbeStatus.state === "checking"
-          ? "Trying upload..."
+          ? "Checking downloads..."
           : remoteImageProbeStatus.state === "checked"
             ? remoteImageProbeStatus.fail
-              ? "Try image upload again"
+              ? "Check downloads again"
               : "All web images ready"
-            : "Try image upload";
+            : "Check downloads";
     }
     updateRemotePermissionSteps({
       hasRemoteImages: true,
-      missing,
       probeFailed,
       probeState: remoteImageProbeStatus.state
     });
     translateDynamicDom(els.remotePermissionPanel);
   }
 
-  function updateRemotePermissionSteps({ hasRemoteImages, missing = [], probeFailed = false, probeState = "idle" } = {}) {
+  function updateRemotePermissionSteps({ hasRemoteImages, probeFailed = false, probeState = "idle" } = {}) {
     const steps = els.remotePermissionPanel?.querySelectorAll("[data-remote-step]");
     if (!steps?.length) return;
     const tones = {
-      allow: !hasRemoteImages ? "idle" : missing.length ? "warn" : "ok",
-      check: !hasRemoteImages || missing.length ? "idle" : probeFailed ? "error" : probeState === "checked" ? "ok" : "warn",
-      import: !hasRemoteImages || missing.length ? "idle" : probeFailed ? "error" : probeState === "checked" ? "ok" : "idle"
+      detect: hasRemoteImages ? "ok" : "idle",
+      check: !hasRemoteImages ? "idle" : probeFailed ? "error" : probeState === "checked" ? "ok" : "warn",
+      import: !hasRemoteImages ? "idle" : probeFailed ? "warn" : probeState === "checked" ? "ok" : "ready"
     };
     for (const item of steps) {
       item.dataset.tone = tones[item.dataset.remoteStep] || "idle";
@@ -2598,7 +2407,6 @@ console.log("示例代码块");
     const bridgeReady = Boolean(main.hasDraftStateNode);
     const uploadReady = Boolean(main.hasOnFilesAdded);
     const localVaultReady = Boolean(vault.configured && vault.permission === "granted");
-    const remoteGranted = new Set(remotePermissionStatus.granted || []);
     const remoteProbeBySource = new Map((remoteImageProbeStatus.results || []).map((item) => [item.source, item]));
 
     if (!parsed?.segments?.length) {
@@ -2654,7 +2462,6 @@ console.log("示例代码块");
         bridgeReady,
         uploadReady,
         localVaultReady,
-        remoteGranted,
         remoteProbeBySource,
         counts
       }));
@@ -2697,28 +2504,23 @@ console.log("示例代码块");
           origin = new URL(segment.source).origin;
         } catch {}
       }
-      const remoteAllowed = !remote || state.remoteGranted?.has(origin);
       const remoteProbe = remote ? state.remoteProbeBySource?.get(segment.source) : null;
       const remoteChecked = !remote || remoteProbe?.ok === true;
       const tone = absolute
         ? "error"
         : local && !state.localVaultReady
           ? "warn"
-          : remote && !remoteAllowed
-            ? "warn"
-            : remote && remoteProbe?.ok === false
-              ? "error"
-              : remote && !remoteChecked
-                ? "warn"
-                : state.uploadReady
-                  ? "ok"
-                  : "warn";
+          : remote && remoteProbe?.ok === false
+            ? "error"
+            : remote && !remoteChecked
+              ? "warn"
+              : state.uploadReady
+                ? "ok"
+                : "warn";
       const detail = absolute
           ? "Absolute local paths are blocked; use a path relative to the selected folder."
         : local && !state.localVaultReady
           ? `Choose a readable local image folder before uploading ${segment.source}.`
-        : remote && !remoteAllowed
-          ? `Allow ${origin || "the image site"} to upload this image.`
         : remote && remoteProbe?.ok === false
           ? `Download failed: ${remoteProbe.error}.`
         : remote && !remoteChecked
@@ -2808,16 +2610,7 @@ console.log("示例代码块");
     const uploadReady = !needsUploads || Boolean(main.hasOnFilesAdded);
     const bridgeReady = Boolean(main.hasDraftStateNode);
     const localReady = !localImages.length || (vault.configured && vault.permission === "granted");
-    const remoteGranted = new Set(remotePermissionStatus.granted || []);
-    const remoteReady =
-      !remoteImages.length ||
-      remoteImages.every((segment) => {
-        try {
-          return remoteGranted.has(new URL(segment.source).origin);
-        } catch {
-          return false;
-        }
-      });
+    const remoteReady = !remoteImages.length || remoteImageProbeStatus.fail === 0;
 
     if (empty) {
       return [
@@ -2865,7 +2658,7 @@ console.log("示例代码块");
         tone: counts.image ? (remoteReady && uploadReady ? "ok" : "warn") : "idle",
         detail: counts.image
           ? !remoteReady
-            ? "Web image links need approval before import."
+            ? "Some web images may stay as Markdown links unless their URLs are public and downloadable."
             : uploadReady
             ? "Prepared images can be uploaded through X."
             : "Open the X editor and run Check so images can upload."
@@ -2935,8 +2728,8 @@ console.log("示例代码块");
         tone: remoteImages.length ? (remoteReady ? "ok" : "warn") : "idle",
         detail: remoteImages.length
           ? remoteReady
-            ? "Remote image URLs are already allowed."
-            : "Web image links need approval before import."
+            ? "xPoster will try to download these public image URLs while writing."
+            : "Some web images failed download checks and will stay as Markdown links unless replaced."
           : "No remote image URLs detected.",
         count: remoteImages.length
       }
@@ -3001,7 +2794,7 @@ console.log("示例代码块");
       notes.push({ tone: "ok", text: "No local image paths require folder access." });
     }
 
-    if (remoteImages.length) notes.push({ tone: "warn", text: `${remoteImages.length} web image(s) need one Chrome approval before upload.` });
+    if (remoteImages.length) notes.push({ tone: "ok", text: `${remoteImages.length} web image(s) will be downloaded in the background; failed downloads stay as Markdown links.` });
 
     if (uploadCount) {
       notes.push({
@@ -3026,7 +2819,7 @@ console.log("示例代码块");
     if (!parsed) {
       els.previewTitle.textContent = "No title yet";
       els.previewMeta.textContent = "Paste Markdown to see what xPoster will move into X.";
-      els.previewBody.innerHTML = `<p class="empty">This is a recognition preview. Image links are still text in the draft box, but xPoster will upload them into X after the image website is allowed and downloads pass.</p>`;
+      els.previewBody.innerHTML = `<p class="empty">This is a recognition preview. Image links stay as text in the draft box; xPoster downloads public images during Write and keeps failed downloads as links.</p>`;
       els.planReadiness.innerHTML = `<span>Text blocks 0</span><span>Special blocks 0</span><span>Images 0</span><span>Local images 0</span>`;
       els.planBreakdown.querySelector("p").textContent = "Load Markdown to see the plain-language import steps.";
       els.planSteps.innerHTML = `<li><span class="plan-step-kind">Start</span><span class="plan-step-text">Paste a draft or choose a Markdown file.</span></li>`;
@@ -3228,7 +3021,7 @@ console.log("示例代码块");
 
   function updateSecondaryActions(primaryAction = currentNextAction) {
     const primary = primaryAction?.action || "";
-    const focusOnly = new Set(["loadFile", "allowRemoteImages", "checkRemoteImages"]);
+    const focusOnly = new Set(["loadFile", "checkRemoteImages"]);
     if (els.openArticles) {
       els.openArticles.hidden = true;
     }
@@ -3282,10 +3075,8 @@ console.log("示例代码块");
       ? latestParsed.segments.some((segment) => segment.type === "image" && shared.isLocalImageSource(segment.source))
       : false;
     const needsRemoteImages = remoteHttpImageSegments(latestParsed).length > 0;
-    const needsRemotePermission = needsRemoteImages && (remotePermissionStatus.missing || []).length > 0;
     const needsRemoteDownloadCheck =
       needsRemoteImages &&
-      !needsRemotePermission &&
       byId.get("remote-images")?.tone === "warn";
     const liveResult = buildLiveResultEvidence();
 
@@ -3350,7 +3141,7 @@ console.log("示例代码块");
       return {
         tone: "ready",
         title: "Write article",
-        detail: needsRemotePermission || needsRemoteDownloadCheck
+        detail: needsRemoteDownloadCheck
           ? "Ready to write. Web images that Chrome cannot read will stay as Markdown links."
           : "Ready. xPoster will fill the open X Article, then you review it before publishing.",
         button: "Write article",
@@ -3632,9 +3423,7 @@ console.log("示例代码块");
       bridge: { action: "check", button: "Check article" },
       uploads: { action: "check", button: "Check article" },
       assets: { action: "chooseVault", button: "Choose" },
-      "remote-images": remotePermissionStatus.missing?.length
-        ? { action: "allowRemoteImages", button: "Allow site" }
-        : { action: "checkRemoteImages", button: "Check images" },
+      "remote-images": { action: "checkRemoteImages", button: "Check images" },
       plan: { action: "preview", button: "Preview" }
     };
     const command = actions[check.id] || {};
@@ -3684,7 +3473,7 @@ console.log("示例代码块");
     const needsBridge = (counts.tweet || 0) + (counts.code || 0) + (counts.divider || 0) > 0 || plan.summary.markers > 0;
     const hasMetadata = Boolean(latestParsed?.title || latestParsed?.cover);
     const mediaTone = byId.get("remote-images")?.tone === "warn" ? "warn" : byId.get("uploads")?.tone || "warn";
-    const mediaStatus = byId.get("remote-images")?.tone === "warn" ? "Waiting" : toneLabel(byId.get("uploads")?.tone);
+    const mediaStatus = byId.get("remote-images")?.tone === "warn" ? "Optional check" : toneLabel(byId.get("uploads")?.tone);
     const pasteBlocked = Boolean(
       latestParsed?.segments?.length &&
         (byId.get("target")?.tone === "error" || byId.get("plan")?.tone === "error")
@@ -3707,7 +3496,7 @@ console.log("示例代码块");
         detail: needsMedia
           ? byId.get("remote-images")?.tone === "warn"
             ? byId.get("remote-images")?.detail
-          : `${counts.image || 0} image(s) and ${counts.table || 0} table(s) will be uploaded into X.`
+            : `${counts.image || 0} image(s) and ${counts.table || 0} table(s) will be uploaded into X.`
           : latestParsed
             ? "No image or table upload is needed for this draft."
             : "Images and tables will be prepared after parsing.",
@@ -3806,7 +3595,7 @@ console.log("示例代码块");
         tone: remotePending ? "warn" : byId.get("uploads")?.tone || "idle",
         detail: uploadCount
           ? remotePending
-            ? "Allow image website first."
+            ? "Web images will be tried during Write; failed downloads stay as links."
             : latestDiagnostics?.main?.hasOnFilesAdded
             ? `${uploadCount} upload item${uploadCount === 1 ? "" : "s"} ready.`
             : `${uploadCount} upload item${uploadCount === 1 ? "" : "s"} need the X editor.`
@@ -3932,8 +3721,7 @@ console.log("示例代码块");
     const remoteImageList = parsed ? remoteHttpImageSegments(parsed) : [];
     const remoteImages = remoteImageList.length;
     const remoteOrigins = remoteImageOrigins(parsed);
-    const remoteMissing = remoteOrigins.filter((origin) => !(remotePermissionStatus.granted || []).includes(origin));
-    const remoteReady = !remoteOrigins.length || (remoteMissing.length === 0 && remoteImageProbeReady(parsed));
+    const remoteReady = !remoteOrigins.length || remoteImageProbeReady(parsed);
     const hasDraft = Boolean(parsed?.segments?.length);
     const targetMissingTone = hasDraft ? "warn" : "error";
     const hasPlan = hasDraft && Boolean(shared.buildPastePlan(parsed.segments, previewImageMap(parsed), previewTableMap(parsed)).plan.length || parsed.segments.length);
@@ -4030,12 +3818,10 @@ console.log("示例代码块");
         tone: remoteImages ? (remoteReady ? "ok" : "warn") : "ok",
         detail: remoteImages
           ? remoteReady
-            ? `${remoteImages} remote image(s) from ${remoteOrigins.length} site(s) can be fetched.`
-            : remoteMissing.length
-              ? `${remoteImages} web image(s) from ${remoteOrigins.length} image website(s) need your approval before upload. This is a Chrome permission step, not an X upload failure.`
-              : remoteImageProbeStatus.fail
-                ? `${remoteImages} web image(s) checked: ${remoteImageProbeStatus.ok} ready, ${remoteImageProbeStatus.fail} failed.`
-                : "Remote image URLs are allowed, but image download has not been checked yet."
+            ? `${remoteImages} web image(s) from ${remoteOrigins.length} site(s) will be tried during Write.`
+            : remoteImageProbeStatus.fail
+              ? `${remoteImages} web image(s) checked: ${remoteImageProbeStatus.ok} ready, ${remoteImageProbeStatus.fail} will stay as links unless replaced.`
+              : "Web images will be downloaded during Write; failed downloads stay as Markdown links."
           : "No remote image URLs detected."
       },
       {
@@ -4137,7 +3923,7 @@ console.log("示例代码块");
           remoteImages: {
             count: remoteHttpImageSegments(latestParsed).length,
             origins: remoteImageOrigins(latestParsed),
-            permission: remotePermissionStatus,
+            access: remoteImageAccessStatus,
             probe: remoteImageProbeStatus
           }
         }
@@ -4151,7 +3937,7 @@ console.log("示例代码块");
           remoteImages: {
             count: 0,
             origins: [],
-            permission: remotePermissionStatus,
+            access: remoteImageAccessStatus,
             probe: remoteImageProbeStatus
           }
         };
@@ -4726,9 +4512,7 @@ console.log("示例代码块");
             : byId.get("page-script")?.tone !== "ok"
               ? "refreshXTab"
             : remoteImagesPending
-              ? remotePermissionStatus.missing?.length
-                ? "allowRemoteImages"
-                : "checkRemoteImages"
+              ? "checkRemoteImages"
               : "check",
         button:
           byId.get("draft")?.tone !== "ok"
@@ -4738,9 +4522,7 @@ console.log("示例代码块");
             : byId.get("page-script")?.tone !== "ok"
               ? "Refresh X"
             : remoteImagesPending
-              ? remotePermissionStatus.missing?.length
-                ? "Allow site"
-                : "Check images"
+              ? "Check images"
               : "Check X"
       });
     } else if (!hasImportEvidence) {
@@ -4957,37 +4739,11 @@ console.log("示例代码块");
   async function prepareSimpleWriteTarget(parsed) {
     const remoteImages = remoteHttpImageSegments(parsed);
     if (remoteImages.length) {
-      log(`Preparing ${remoteImages.length} web image(s) for upload...`);
+      log(`Preparing ${remoteImages.length} web image(s) for upload. Failed downloads will stay as Markdown links.`);
       revealRemotePermissionPanel();
-      const permission = await ensureRemoteImagePermissionsForDraft(parsed, { requestImmediately: true });
-      if (!permission.ok) {
-        revealRemotePermissionPanel();
-        log(permission.error);
-        return {
-          ok: false,
-          reason: permission.error,
-          checks: buildPreflightChecks(),
-          gate: getImportGate(buildPreflightChecks()),
-          targetContext: buildTargetContextEvidence(),
-          remotePermission: permission
-        };
-      }
-      const probe = await probeRemoteImagesForDraft(parsed);
-      if (!probe.ok) {
-        revealRemotePermissionPanel();
-        log(`Image upload check failed: ${probe.error}`);
-        return {
-          ok: false,
-          reason: probe.error || "Some web images could not be downloaded for upload.",
-          checks: buildPreflightChecks(),
-          gate: getImportGate(buildPreflightChecks()),
-          targetContext: buildTargetContextEvidence(),
-          remoteProbe: probe
-        };
-      }
-      log(`${remoteImages.length} web image(s) are ready for X upload.`);
+      await refreshRemoteImageAccessStatus(parsed);
     } else {
-      await refreshRemotePermissionStatusBeforeAction(parsed);
+      await refreshRemoteImageAccessStatus(parsed);
       updatePreflight();
     }
     let checks = buildPreflightChecks();
@@ -5034,6 +4790,9 @@ console.log("示例代码块");
       return;
     }
     const parsed = ensureLatestParsedFromDraft();
+    window.clearTimeout(draftInputHistoryTimer);
+    ensureActiveDraftRecordId();
+    if (!currentDraftRecord()) rememberDraftHistory("typed");
     updatePreflight();
     updateWriteButton({ busy: true });
     resetLiveProgress("import");
@@ -5102,7 +4861,7 @@ console.log("示例代码块");
     const keptImages = Number(summary.mediaWarnings?.images || 0) + Number(summary.main?.imgFail || 0);
     const keptTables = Number(summary.mediaWarnings?.tables || 0);
     if (keptImages) {
-      return `Article written${elapsed ? ` in ${elapsed}` : ""}. ${keptImages} web image(s) stayed as Markdown links. Allow the image website in xPoster, then write again to upload them.`;
+      return `Article written${elapsed ? ` in ${elapsed}` : ""}. ${keptImages} web image(s) stayed as Markdown links. Replace private or expired URLs with public links if they must upload.`;
     }
     if (keptTables) {
       return `Article written${elapsed ? ` in ${elapsed}` : ""}. ${keptTables} table(s) stayed as Markdown.`;
@@ -5116,6 +4875,10 @@ console.log("示例代码块");
     if (title.ui?.ok && (title.graphql?.ok || title.graphql?.skipped)) return "Set";
     if (title.ui?.ok) return "UI only";
     return "Failed";
+  }
+
+  function mergeSummaryResult(current, previous, fallback = "Not run") {
+    return current && current !== "Skipped" ? current : previous || fallback;
   }
 
   function summarizeCoverResult(cover) {
@@ -5228,13 +4991,13 @@ console.log("示例代码块");
       const file = input.files?.[0];
       input.remove();
       if (!file) return;
-      await loadMarkdownFileIntoDraft(file);
+      await loadMarkdownFileIntoDraft(file, "file");
       showWorkspacePanel("draft");
     });
     input.click();
   }
 
-  async function loadMarkdownFileIntoDraft(file) {
+  async function loadMarkdownFileIntoDraft(file, source = "file") {
     if (!file?.name || !/\.(md|markdown|mdown|mkd|txt)$/i.test(file.name)) {
       log("Choose a Markdown file.");
       setDraftDropStatus("Could not load Markdown", "Try a .md, .markdown, .txt file, or plain Markdown text.", "error");
@@ -5246,6 +5009,7 @@ console.log("示例代码块");
       els.markdown.value = text;
       saveDraft();
       analyzeDraft();
+      rememberDraftHistory(source, { fileName: file.name, size: file.size, forceNew: true });
       setDraftDropStatus("Markdown loaded", `Loaded ${text.length} characters. Review it, then click Write article.`, "done");
       log(`Loaded ${file.name}.`);
       updateWriteButton();
@@ -5321,13 +5085,14 @@ console.log("示例代码块");
       setDraftDropStatus("Reading Markdown...", "Loading the dropped content into the draft box.", "ready");
       const file = Array.from(event.dataTransfer.files || []).find((item) => /\.(md|markdown|mdown|mkd|txt)$/i.test(item.name || ""));
       if (file) {
-        await loadMarkdownFileIntoDraft(file);
+        await loadMarkdownFileIntoDraft(file, "drop-file");
       } else {
         const text = markdownTextFromTransfer(event.dataTransfer);
         if (text) {
           els.markdown.value = text;
           saveDraft();
           analyzeDraft();
+          rememberDraftHistory("drop", { forceNew: true });
           log("Loaded dragged Markdown.");
         } else {
           setDraftDropStatus("Could not load Markdown", "That drop did not include Markdown text or a .md file.", "error");
@@ -5342,6 +5107,7 @@ console.log("示例代码块");
     log("Loaded example Markdown draft.");
     saveDraft();
     analyzeDraft();
+    rememberDraftHistory("example", { forceNew: true });
   }
 
   async function chooseVault() {
@@ -5388,6 +5154,7 @@ console.log("示例代码块");
       if (nextDraft === els.markdown.value) return;
       els.markdown.value = nextDraft;
       analyzeDraft();
+      rememberDraftHistory("restored", { forceNew: true });
       showWorkspacePanel("draft");
       setDraftDropStatus("Markdown loaded", `${nextDraft.length} characters. Review it, then click Write article.`, "done");
       log("Markdown draft loaded from the X Article tab.");
@@ -5436,7 +5203,7 @@ console.log("示例代码块");
     await refreshPageState();
     const response = await sendToActiveTab({ type: "xposter:diagnostics" });
     latestDiagnostics = response?.ok ? response : { ok: false, error: response?.error || "Diagnostics unavailable" };
-    await refreshRemoteImagePermissionStatus(latestParsed);
+    await refreshRemoteImageAccessStatus(latestParsed);
     const locked = response?.ok ? lockTargetContext("preflight") : null;
     if (locked) log(`Article confirmed: ${locked.context.articleId ? `article ${locked.context.articleId}` : "the open X Article"}.`);
     updatePreflight();
@@ -5456,9 +5223,14 @@ console.log("示例代码块");
   function captureEvidence(kind, payload) {
     const checks = buildPreflightChecks();
     const gate = getImportGate(checks);
+    const targetContext = payload?.targetContext || buildTargetContextEvidence();
     latestEvidence = {
+      id: activeDraftRecordId || null,
       kind,
       capturedAt: new Date().toISOString(),
+      draftRecordId: activeDraftRecordId || null,
+      draftFingerprint: activeDraftFingerprint || draftFingerprint(els.markdown.value || ""),
+      source: currentDraftRecord()?.source || null,
       draft: {
         title: latestParsed?.title || null,
         cover: latestParsed?.cover || null,
@@ -5467,7 +5239,7 @@ console.log("示例代码块");
         remoteImages: {
           count: remoteHttpImageSegments(latestParsed).length,
           origins: remoteImageOrigins(latestParsed),
-          permission: remotePermissionStatus,
+          access: remoteImageAccessStatus,
           probe: remoteImageProbeStatus
         }
       },
@@ -5478,12 +5250,13 @@ console.log("示例代码块");
       proofDeck: buildProofDeckEvidence(checks, gate),
       completionAudit: buildCompletionAuditEvidence(checks, gate),
       recovery: buildRecoveryState(checks, gate),
-      targetContext: buildTargetContextEvidence(),
+      targetContext,
       importLedger: buildImportLedger(latestParsed, latestCounts),
       liveProgress: buildLiveProgressEvidence(),
       ...payload
     };
     addRecordHistoryEntry(latestEvidence);
+    if (kind === "import" || kind === "import-error") activeDraftFinalized = true;
     els.evidenceMeta.textContent = `${kind} captured ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
     els.evidenceText.textContent = JSON.stringify(latestEvidence, jsonSafeReplacer, 2);
     els.copyEvidence.disabled = false;
@@ -5501,13 +5274,19 @@ console.log("示例代码块");
 
   function addRecordHistoryEntry(evidence) {
     if (!evidence) return;
-    const entry = normalizeRecordHistoryEntry(evidence);
+    const previous = currentDraftRecord(evidence.draftRecordId || evidence.id);
+    const entry = normalizeRecordHistoryEntry(evidence, previous);
     recordHistory = [entry, ...recordHistory.filter((item) => item.id !== entry.id)].slice(0, MAX_RECORD_HISTORY);
     persistRecordHistory();
     renderRecordHistory();
   }
 
-  function normalizeRecordHistoryEntry(evidence) {
+  function currentDraftRecord(id = activeDraftRecordId) {
+    if (!id) return null;
+    return recordHistory.find((item) => item.id === id) || null;
+  }
+
+  function normalizeRecordHistoryEntry(evidence, previous = null) {
     const summary = evidence.result?.summary || evidence.liveProgress?.summary || null;
     const main = summary?.main || evidence.result?.summary?.main || {};
     const title = evidence.draft?.title || summary?.title || "Untitled draft";
@@ -5518,30 +5297,90 @@ console.log("示例代码块");
     const uploadFail = Number(main?.imgFail || 0);
     const warnings = Number(summary?.mediaWarnings?.total || 0) + uploadFail;
     const target = evidence.targetContext || {};
+    const pageStatus = evidence.pageStatus || {};
+    const articleId = target.articleId || main?.title?.articleId || main?.cover?.articleId || previous?.articleId || null;
+    const url = articleUrlForRecord({ target, pageStatus, articleId, previousUrl: previous?.url });
+    const source = evidence.source || previous?.source || null;
     return {
-      id: `${capturedAt}-${kind}-${Math.random().toString(36).slice(2, 8)}`,
+      id: evidence.draftRecordId || evidence.id || previous?.id || `${capturedAt}-${kind}-${Math.random().toString(36).slice(2, 8)}`,
       kind,
-      capturedAt,
+      capturedAt: previous?.capturedAt || capturedAt,
+      updatedAt: evidence.updatedAt || capturedAt,
       title,
       status: recordStatusForEvidence(evidence),
       tone: recordToneForEvidence(evidence),
-      articleId: target.articleId || main?.title?.articleId || null,
-      route: target.route || null,
+      articleId,
+      route: target.route || previous?.route || null,
+      url,
+      source,
+      blocks: evidence.draft?.blocks || previous?.blocks || 0,
+      characters: evidence.draft?.characters || previous?.characters || 0,
       images: {
-        ok: imageOk,
-        fail: imageFail,
+        ok: imageOk || previous?.images?.ok || 0,
+        fail: imageFail || previous?.images?.fail || 0,
         warnings
       },
-      titleResult: summarizeTitleResult(main?.title),
-      coverResult: summarizeCoverResult(main?.cover),
-      elapsedMs: summary?.elapsedMs || null,
+      titleResult: mergeSummaryResult(summarizeTitleResult(main?.title), previous?.titleResult),
+      coverResult: mergeSummaryResult(summarizeCoverResult(main?.cover), previous?.coverResult),
+      elapsedMs: summary?.elapsedMs || previous?.elapsedMs || null,
       blockers: Array.isArray(evidence.checks) ? evidence.checks.filter((check) => check.tone === "error").length : 0,
-      remoteImages: evidence.draft?.remoteImages || null,
+      remoteImages: evidence.draft?.remoteImages || previous?.remoteImages || null,
       evidence
     };
   }
 
+  function articleUrlForRecord({ target = {}, pageStatus = {}, articleId = null, previousUrl = null } = {}) {
+    const candidates = [target.url, pageStatus.url, previousUrl].filter(Boolean);
+    const editUrl = candidates.find((url) => /\/compose\/articles\/edit\//.test(String(url)));
+    if (editUrl) return editUrl;
+    if (articleId) return `https://x.com/compose/articles/edit/${encodeURIComponent(articleId)}`;
+    return candidates.find((url) => /^https:\/\/(?:x|twitter)\.com\/compose\/articles/.test(String(url))) || null;
+  }
+
+  function formatRecordTarget(record) {
+    if (record.articleId) return currentLanguage === "zh" ? `文章 ${record.articleId}` : `Article ${record.articleId}`;
+    if (record.route === "editor") return currentLanguage === "zh" ? "已打开文章编辑器" : "Article editor open";
+    if (record.route === "articles") return currentLanguage === "zh" ? "X 文章列表" : "X Articles list";
+    if (record.route && record.route !== "none") return currentLanguage === "zh" ? `X 页面：${record.route}` : `X page: ${record.route}`;
+    return currentLanguage === "zh" ? "还没有关联 X 文章" : "No X Article linked yet";
+  }
+
+  function formatRecordDraftStats(record) {
+    const parts = [];
+    if (record.blocks) parts.push(currentLanguage === "zh" ? `${record.blocks} 个内容块` : `${record.blocks} block(s)`);
+    if (record.characters) parts.push(currentLanguage === "zh" ? `${record.characters} 字符` : `${record.characters} chars`);
+    if (record.remoteImages?.count) {
+      parts.push(currentLanguage === "zh" ? `${record.remoteImages.count} 张远程图片` : `${record.remoteImages.count} remote image(s)`);
+    }
+    return parts.join(", ") || (currentLanguage === "zh" ? "没有草稿统计" : "No draft stats");
+  }
+
+  function formatRecordImageText(record) {
+    if (record.images.warnings) {
+      return currentLanguage === "zh"
+        ? `${record.images.ok} 张图片可用，${record.images.warnings} 项需要处理`
+        : `${record.images.ok} image(s) ready, ${record.images.warnings} need attention`;
+    }
+    if (record.images.ok || record.images.fail) {
+      return currentLanguage === "zh"
+        ? `${record.images.ok} 张图片已上传`
+        : `${record.images.ok} image(s) uploaded`;
+    }
+    return currentLanguage === "zh" ? "还没有图片上传结果" : "No image upload result";
+  }
+
+  function recordKindLabel(kind) {
+    if (kind === "draft-loaded") return "Loaded draft";
+    if (kind === "import") return "Import completed";
+    if (kind === "import-error") return "Import failed";
+    if (kind === "preflight") return "Check result";
+    if (kind === "preflight-blocked" || String(kind || "").includes("blocked")) return "Check blocked";
+    if (String(kind || "").includes("remote-image")) return "Image handling";
+    return kind || "Saved";
+  }
+
   function recordStatusForEvidence(evidence) {
+    if (evidence.kind === "draft-loaded") return "Draft ready";
     if (evidence.kind === "import") return "Written";
     if (evidence.kind === "import-error") return "Failed";
     if (evidence.kind === "preflight-blocked" || evidence.kind?.includes("blocked")) return "Blocked";
@@ -5554,6 +5393,7 @@ console.log("示例代码块");
   }
 
   function recordToneForEvidence(evidence) {
+    if (evidence.kind === "draft-loaded") return "ready";
     if (evidence.kind === "import") return "ok";
     if (evidence.kind === "import-error" || evidence.kind === "preflight-blocked" || evidence.kind?.includes("blocked")) return "error";
     if (evidence.kind?.includes("remote-image")) return evidence.kind.includes("check") && !evidence.kind.includes("blocked") ? "ok" : "warn";
@@ -5572,7 +5412,9 @@ console.log("示例代码块");
       return;
     }
     const stored = await chrome.storage.local.get(STORAGE_RECORD_HISTORY).catch(() => ({}));
-    recordHistory = Array.isArray(stored[STORAGE_RECORD_HISTORY]) ? stored[STORAGE_RECORD_HISTORY].slice(0, MAX_RECORD_HISTORY) : [];
+    recordHistory = Array.isArray(stored[STORAGE_RECORD_HISTORY])
+      ? stored[STORAGE_RECORD_HISTORY].slice(0, MAX_RECORD_HISTORY).map(normalizeStoredRecordHistoryEntry)
+      : [];
     latestEvidence = recordHistory[0]?.evidence || latestEvidence;
     if (latestEvidence) {
       els.evidenceMeta.textContent = `${latestEvidence.kind} captured ${new Date(latestEvidence.capturedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
@@ -5581,6 +5423,26 @@ console.log("示例代码块");
     }
     renderRecordHistory();
     updateProgressiveSections();
+  }
+
+  function normalizeStoredRecordHistoryEntry(record) {
+    if (!record || typeof record !== "object") return record;
+    const evidence = record.evidence || {};
+    return {
+      ...record,
+      updatedAt: record.updatedAt || evidence.updatedAt || record.capturedAt,
+      source: record.source || evidence.source || null,
+      blocks: record.blocks || evidence.draft?.blocks || 0,
+      characters: record.characters || evidence.draft?.characters || 0,
+      url: record.url || articleUrlForRecord({
+        target: evidence.targetContext || {},
+        pageStatus: evidence.pageStatus || {},
+        articleId: record.articleId,
+        previousUrl: null
+      }),
+      titleResult: record.titleResult || "Not run",
+      coverResult: record.coverResult || "Not run"
+    };
   }
 
   function renderRecordHistory() {
@@ -5606,33 +5468,58 @@ console.log("示例代码块");
   function renderRecordHistoryItem(record) {
     const safe = shared.escapeHtml;
     const captured = new Date(record.capturedAt);
+    const updated = new Date(record.updatedAt || record.capturedAt);
     const time = Number.isNaN(captured.getTime())
       ? record.capturedAt
       : captured.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-    const imageText = record.images.warnings
-      ? `${record.images.ok} image(s) ready, ${record.images.warnings} need attention`
-      : record.images.ok || record.images.fail
-        ? `${record.images.ok} image(s) uploaded`
-        : "No image upload result";
-    const targetText = record.articleId ? `Article ${record.articleId}` : record.route ? `Target: ${record.route}` : "Target not locked";
+    const updatedTime = Number.isNaN(updated.getTime())
+      ? record.updatedAt || record.capturedAt
+      : updated.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    const imageText = formatRecordImageText(record);
+    const targetText = formatRecordTarget(record);
+    const sourceParts = [
+      record.source?.label || "Draft",
+      record.source?.fileName || ""
+    ].filter(Boolean);
+    const sourceText = sourceParts.join(": ");
+    const articleUrl = record.url || "";
+    const urlLabel = record.articleId || /\/compose\/articles\/edit\//.test(articleUrl) ? "Article URL" : "Page URL";
+    const emptyUrlText = urlLabel === "Article URL" ? "No article URL yet" : "No page URL yet";
+    const articleUrlHtml = articleUrl
+      ? `<a href="${safe(articleUrl)}" target="_blank" rel="noopener noreferrer">${safe(articleUrl)}</a>`
+      : safe(emptyUrlText);
+    const draftStats = formatRecordDraftStats(record);
     return `
       <li class="record-history-item" data-tone="${safe(record.tone)}">
         <details>
           <summary>
             <span class="record-status">${safe(record.status)}</span>
-            <span class="record-title">${safe(record.title)}</span>
-            <time>${safe(time)}</time>
+            <span class="record-title">
+              <strong>${safe(record.title)}</strong>
+              <em>${safe(sourceText)}</em>
+            </span>
+            <time>${safe(updatedTime || time)}</time>
           </summary>
           <div class="record-history-body">
+            <div class="record-url-row">
+              <span>${safe(urlLabel)}</span>
+              ${articleUrlHtml}
+            </div>
             <dl>
-              <div><dt>Kind</dt><dd>${safe(record.kind)}</dd></div>
+              <div><dt>Source</dt><dd>${safe(sourceText)}</dd></div>
+              <div><dt>Step</dt><dd>${safe(recordKindLabel(record.kind))}</dd></div>
               <div><dt>Target</dt><dd>${safe(targetText)}</dd></div>
+              <div><dt>Blocks</dt><dd>${safe(draftStats)}</dd></div>
               <div><dt>Images</dt><dd>${safe(imageText)}</dd></div>
               <div><dt>Title</dt><dd>${safe(record.titleResult)}</dd></div>
               <div><dt>Cover</dt><dd>${safe(record.coverResult)}</dd></div>
               <div><dt>Elapsed</dt><dd>${safe(record.elapsedMs ? `${(record.elapsedMs / 1000).toFixed(1)}s` : "Not run")}</dd></div>
+              <div><dt>Last update</dt><dd>${safe(updatedTime || time)}</dd></div>
             </dl>
-            <pre>${safe(JSON.stringify(record.evidence, jsonSafeReplacer, 2))}</pre>
+            <details class="record-raw-details">
+              <summary>Technical details</summary>
+              <pre>${safe(JSON.stringify(record.evidence, jsonSafeReplacer, 2))}</pre>
+            </details>
           </div>
         </details>
       </li>
@@ -5642,6 +5529,10 @@ console.log("示例代码块");
   async function clearRecordHistory() {
     recordHistory = [];
     latestEvidence = null;
+    activeDraftRecordId = null;
+    activeDraftFingerprint = null;
+    activeDraftFinalized = false;
+    window.clearTimeout(draftInputHistoryTimer);
     if (hasChromeApi()) await chrome.storage.local.remove(STORAGE_RECORD_HISTORY).catch(() => {});
     els.evidenceMeta.textContent = "No local record saved yet.";
     els.evidenceText.textContent = "Write an article to save a local record.";
@@ -5700,10 +5591,10 @@ console.log("示例代码块");
         tone: needsRemote ? (remoteReady ? "ok" : "warn") : "ok",
         detail: needsRemote
           ? remoteReady
-            ? "Remote image URLs are allowed and every image was downloaded successfully."
+            ? "Web images will be downloaded in the background and uploaded through X when reachable."
             : remoteImageProbeStatus.fail
-              ? "Remote image URLs are allowed, but some images could not be downloaded."
-              : "Allow the image website to upload remote URLs."
+              ? "Some web images could not be downloaded and will stay as Markdown links unless replaced."
+              : "Web images will be tried during Write; Check downloads is optional."
           : "No remote image URLs detected."
       },
       {
@@ -5820,10 +5711,10 @@ console.log("示例代码块");
         tone: needsRemote ? (remoteReady ? "ok" : "warn") : "ok",
         detail: needsRemote
           ? remoteReady
-            ? "Remote image URLs are allowed and every image was downloaded successfully."
+            ? "Web images will be downloaded in the background and uploaded through X when reachable."
             : remoteImageProbeStatus.fail
-              ? "Remote image URLs are allowed, but some images could not be downloaded."
-              : "Allow the image website to upload remote URLs."
+              ? "Some web images could not be downloaded and will stay as Markdown links unless replaced."
+              : "Web images will be tried during Write; Check downloads is optional."
           : "No remote image URLs detected."
       },
       {
@@ -5983,9 +5874,6 @@ console.log("示例代码块");
       case "chooseVault":
         await chooseVault();
         break;
-      case "allowRemoteImages":
-        await runRemotePermissionAction();
-        break;
       case "checkRemoteImages":
         await runRemoteImageCheckAction();
         break;
@@ -6026,9 +5914,6 @@ console.log("示例代码块");
       case "check":
         await runPreflight();
         break;
-      case "allowRemoteImages":
-        await runRemotePermissionAction();
-        break;
       case "checkRemoteImages":
         await runRemoteImageCheckAction();
         break;
@@ -6067,9 +5952,9 @@ console.log("示例代码块");
   els.markdown.addEventListener("input", () => {
     saveDraft();
     analyzeDraft();
+    scheduleDraftHistory("typed");
   });
   els.importDraft.addEventListener("click", runImportButtonAction);
-  els.allowRemoteImages?.addEventListener("click", () => runRemotePermissionAction());
   els.checkRemoteImages?.addEventListener("click", () => runRemoteImageCheckAction());
   els.nextActionButton?.addEventListener("click", runNextAction);
   els.dockCheck.addEventListener("click", runPreflight);
