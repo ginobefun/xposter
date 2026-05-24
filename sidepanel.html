@@ -44,7 +44,7 @@
           <h2 id="nextActionTitle">Load a Markdown draft</h2>
           <p id="nextActionDetail">Add a draft, choose a file, or load an example.</p>
         </div>
-        <button class="secondary next-action-button" id="nextActionButton" type="button">Add draft</button>
+        <button class="secondary next-action-button" id="nextActionButton" type="button">Add Markdown</button>
       </section>
 
       <section class="assurance-strip" aria-label="Cost, privacy, and control" hidden>
@@ -139,20 +139,19 @@
           </div>
         </div>
         <div class="drop-status" id="draftDropStatus" data-tone="idle" aria-live="polite">
-          <strong data-i18n="Add or drop Markdown">Add or drop Markdown</strong>
-          <span data-i18n="Use Add draft, choose a file, or drop .md files here.">Use Add draft, choose a file, or drop .md files here.</span>
+          <strong data-i18n="Markdown draft">Markdown draft</strong>
+          <span data-i18n="Paste Markdown here, choose a file, or drop .md files.">Paste Markdown here, choose a file, or drop .md files.</span>
         </div>
-        <section class="draft-queue" id="draftQueue" aria-label="Pending Markdown queue" data-i18n-aria-label="Pending Markdown queue">
+        <textarea id="markdown" spellcheck="false" placeholder="# Article title&#10;&#10;Paste Markdown here."></textarea>
+        <section class="draft-queue" id="draftQueue" aria-label="Pending Markdown queue" data-i18n-aria-label="Pending Markdown queue" hidden>
           <div class="draft-queue-head">
             <div>
               <strong data-i18n="Pending drafts">Pending drafts</strong>
-              <span id="draftQueueMeta" data-i18n="One list: select a draft, then write it.">One list: select a draft, then write it.</span>
+              <span id="draftQueueMeta" data-i18n="Click a draft to edit.">Click a draft to edit.</span>
             </div>
-            <button class="secondary compact draft-queue-add" id="addDraft" type="button" data-i18n="Add draft">Add draft</button>
           </div>
           <ol class="draft-queue-list" id="draftQueueList"></ol>
         </section>
-        <textarea id="markdown" spellcheck="false" tabindex="-1" aria-hidden="true"></textarea>
 
         <section class="actions publish-dock" aria-label="Write article" data-empty="true">
           <div class="action-primary-block">
@@ -221,7 +220,7 @@
                 <strong>Add your draft</strong>
               <span>Add Markdown, choose a file, or use the example to try the workflow.</span>
             </div>
-              <button class="secondary compact" type="button" data-runbook-action="addDraft">Add draft</button>
+              <button class="secondary compact" type="button" data-runbook-action="addDraft">Add Markdown</button>
             </li>
             <li data-runbook-step="target" data-tone="idle">
               <span class="runbook-index">2</span>
@@ -552,7 +551,7 @@
                 <strong>Add a Markdown draft</strong>
               <span>Add a draft, choose a file, or load the example.</span>
             </div>
-                <button class="secondary compact" type="button" data-issue-action="addDraft">Add draft</button>
+                <button class="secondary compact" type="button" data-issue-action="addDraft">Add Markdown</button>
               </li>
             </ol>
           </section>
@@ -939,6 +938,10 @@
           <button class="secondary compact" type="button" data-record-action="copy-edited" title="Copy text" aria-label="Copy text" data-i18n-title="Copy text" data-i18n-aria-label="Copy text">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7h10v13H8V7Zm2 2v9h6V9h-6ZM5 4h10v2H7v10H5V4Z"/></svg>
             <span data-i18n="Copy text">Copy text</span>
+          </button>
+          <button class="secondary compact" id="recordEditWriteButton" type="button" data-record-action="write-edited" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v3H4V4Zm0 5h10v3H4V9Zm0 5h8v3H4v-3Zm13.5-.7V9h2v4.3l1.6-1.6 1.4 1.4-3.5 3.5-3.5-3.5 1.4-1.4 1.6 1.6ZM17 18h5v2h-5v-2Z"/></svg>
+            <span data-i18n="Write this draft">Write this draft</span>
           </button>
           <button class="primary compact" type="button" data-record-action="use-edited">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v2H5V4Zm0 4h8v2H5V8Zm0 4h7v2H5v-2Zm11 1V8h2v5h3l-4 4-4-4h3Zm-3 6h8v2h-8v-2Z"/></svg>

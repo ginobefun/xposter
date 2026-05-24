@@ -60,7 +60,15 @@ body {
 }
 
 body[data-modal-open="true"] {
+  height: 100dvh;
   overflow: hidden;
+  overscroll-behavior: none;
+}
+
+html[data-modal-open="true"],
+html:has(body[data-modal-open="true"]) {
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 :root[data-theme="dark"] body {
@@ -1100,8 +1108,9 @@ h2 {
 .draft-queue {
   grid-row: 3;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 0;
-  max-height: 154px;
+  min-height: min(430px, calc(100dvh - 292px));
   overflow: hidden;
   border-bottom: 1px solid color-mix(in oklch, var(--line), transparent 38%);
   background: color-mix(in oklch, var(--paper), var(--paper-2) 20%);
@@ -1151,7 +1160,7 @@ h2 {
 
 .draft-queue-list {
   display: grid;
-  max-height: 240px;
+  min-height: 0;
   margin: 0;
   padding: 0;
   overflow: auto;
@@ -1385,15 +1394,12 @@ h2 {
 }
 
 #markdown {
-  display: none;
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  opacity: 0;
-  pointer-events: none;
+  display: block;
+  grid-row: 3;
+  min-height: min(430px, calc(100dvh - 292px));
+  border-top: 1px solid color-mix(in oklch, var(--line), transparent 72%);
+  border-bottom: 1px solid color-mix(in oklch, var(--line), transparent 38%);
+  background: color-mix(in oklch, var(--paper), var(--paper-2) 9%);
   resize: none;
 }
 
@@ -4106,8 +4112,9 @@ textarea:focus-visible,
     grid-template-rows: auto auto auto auto;
   }
 
+  #markdown,
   .draft-queue {
-    max-height: 178px;
+    min-height: min(390px, calc(100dvh - 276px));
   }
 
   .draft-queue-head div {

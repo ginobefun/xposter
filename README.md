@@ -42,17 +42,17 @@ Use the source install only if you want to inspect or modify the extension yours
 
 1. Open or create an X Article at `https://x.com/compose/articles`.
 2. Open the xPoster side panel.
-3. Click **Add draft** to paste Markdown, choose a Markdown file, or click **Example**.
-   Every draft appears in the Pending list instead of opening inline.
+3. Paste Markdown in the editor, choose a Markdown file, or click **Example**.
+   Single drafts stay in the editor so you can keep working directly.
 4. Check the preview and the issue list.
 5. Click **Check article** so xPoster can confirm the active X Article tab is reachable.
-6. Select the draft you want, edit it in the popup if needed, then click **Write article / Import**.
+6. Click **Write article / Import**. If you selected or dropped multiple Markdown files, the editor becomes a Pending list; click a row to edit that draft in a popup, use **Write all drafts** for batch writing, or use **Write this draft** inside the popup for one item.
 7. Review the article inside X.
 8. Click X's own Publish button only when the article looks right.
 
 ## Pending Drafts
 
-Pending is one list. Use **Add draft**, choose one `.md` file, drop text, restore a record, or load many `.md` files; xPoster adds each draft as a row. The selected row is the draft that will be written next. Row actions let you edit in a popup, copy, or remove without expanding long Markdown inside the page.
+Pending starts as one Markdown editor plus the write button. When you choose or drop multiple `.md` files, that editor is replaced by a compact Pending list. Click any row to edit its Markdown in a popup. The bottom button writes all queued drafts one by one; the popup can write just the open draft. Each queued draft is removed as soon as xPoster successfully writes it into X Article.
 
 ## What Markdown Works
 
