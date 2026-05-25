@@ -2812,6 +2812,27 @@ console.log("示例代码块");
     return `${count} ${count === 1 ? singular : plural}`;
   }
 
+  function formatCompactCount(value, { zhTenThousand = true } = {}) {
+    const count = Number(value || 0);
+    if (!Number.isFinite(count)) return "0";
+    const abs = Math.abs(count);
+    const format = (divisor, unit) => {
+      const value = count / divisor;
+      const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
+      return `${String(rounded).replace(/\.0$/, "")}${unit}`;
+    };
+    if (currentLanguage === "zh" && zhTenThousand && abs >= 10000) return format(10000, "w");
+    if (abs >= 1000000) return format(1000000, currentLanguage === "zh" ? "m" : "M");
+    if (abs >= 1000) return format(1000, currentLanguage === "zh" ? "k" : "K");
+    return String(count);
+  }
+
+  function formatCompactUnit(count, enSingular, enPlural, zhUnit, options = {}) {
+    const formatted = formatCompactCount(count, options);
+    if (currentLanguage === "zh") return `${formatted} ${zhUnit}`;
+    return `${formatted} ${Number(count || 0) === 1 ? enSingular : enPlural}`;
+  }
+
   function formatRecognizedItem(count, enSingular, enPlural, zhUnit) {
     if (currentLanguage === "zh") return `${count} ${zhUnit}`;
     return pluralizeUnit(count, enSingular, enPlural);
@@ -3267,7 +3288,7 @@ console.log("示例代码块");
         <button class="draft-queue-main" type="button" data-queue-action="edit" data-queue-id="${safe(item.id)}" title="${safe(localizeText("Edit draft"))}" aria-label="${safe(localizeText("Edit draft"))}">
           <span>${index + 1}</span>
           <strong>${safe(item.title || item.fileName || "Untitled Markdown")}</strong>
-          <em>${safe([item.fileName, localizeText(`${Number(item.characters || 0).toLocaleString()} chars`)].filter(Boolean).join(" · "))}</em>
+          <em>${safe([item.fileName, formatCompactUnit(item.characters || 0, "char", "chars", "字符")].filter(Boolean).join(" · "))}</em>
         </button>
         <span class="draft-queue-state">${safe(localizeText(queueStatusLabel(item)))}</span>
         <div class="draft-queue-actions" aria-label="${safe(localizeText("Draft actions"))}">
@@ -5520,10 +5541,9 @@ console.log("示例代码块");
   }
 
   function draftReadyDetail(length, counts = latestCounts) {
-    const formattedLength = Number(length || 0).toLocaleString();
     const resolvedCounts = counts || shared.segmentCounts([]);
     return [
-      `${formattedLength} chars`,
+      formatCompactUnit(length, "char", "chars", "字符"),
       pluralizeUnit(resolvedCounts.image || 0, "image"),
       pluralizeUnit(resolvedCounts.code || 0, "code block")
     ].join(" · ");
@@ -7234,10 +7254,10 @@ console.log("示例代码块");
 
   function formatRecordDraftStats(record) {
     const parts = [];
-    if (record.blocks) parts.push(currentLanguage === "zh" ? `${record.blocks} 个内容块` : `${record.blocks} block(s)`);
-    if (record.characters) parts.push(currentLanguage === "zh" ? `${record.characters} 字符` : `${record.characters} chars`);
+    if (record.blocks) parts.push(formatCompactUnit(record.blocks, "block", "blocks", "个内容块", { zhTenThousand: false }));
+    if (record.characters) parts.push(formatCompactUnit(record.characters, "char", "chars", "字符"));
     if (record.remoteImages?.count) {
-      parts.push(currentLanguage === "zh" ? `${record.remoteImages.count} 张网页图片` : `${record.remoteImages.count} remote image(s)`);
+      parts.push(formatCompactUnit(record.remoteImages.count, "remote image", "remote images", "张网页图片", { zhTenThousand: false }));
     }
     return parts.join(", ") || (currentLanguage === "zh" ? "没有草稿统计" : "No draft stats");
   }
@@ -7322,9 +7342,9 @@ console.log("示例代码块");
 
   function recordRecoveryStats(record) {
     const items = [];
-    if (record.characters) items.push(currentLanguage === "zh" ? `${record.characters} 字` : `${record.characters} chars`);
-    if (record.blocks) items.push(currentLanguage === "zh" ? `${record.blocks} 块` : `${record.blocks} blocks`);
-    if (record.remoteImages?.count) items.push(currentLanguage === "zh" ? `${record.remoteImages.count} 图` : `${record.remoteImages.count} images`);
+    if (record.characters) items.push(formatCompactUnit(record.characters, "char", "chars", "字"));
+    if (record.blocks) items.push(formatCompactUnit(record.blocks, "block", "blocks", "块", { zhTenThousand: false }));
+    if (record.remoteImages?.count) items.push(formatCompactUnit(record.remoteImages.count, "image", "images", "图", { zhTenThousand: false }));
     return items.slice(0, 3);
   }
 
@@ -7425,8 +7445,8 @@ console.log("示例代码块");
   function recordSummaryItems(record) {
     const items = [];
     if (record.action) items.push(record.action);
-    if (record.blocks) items.push(currentLanguage === "zh" ? `${record.blocks} 个块` : `${record.blocks} blocks`);
-    if (record.remoteImages?.count) items.push(currentLanguage === "zh" ? `${record.remoteImages.count} 张网页图片` : `${record.remoteImages.count} web images`);
+    if (record.blocks) items.push(formatCompactUnit(record.blocks, "block", "blocks", "个块", { zhTenThousand: false }));
+    if (record.remoteImages?.count) items.push(formatCompactUnit(record.remoteImages.count, "web image", "web images", "张网页图片", { zhTenThousand: false }));
     if (record.articleId) items.push(currentLanguage === "zh" ? `文章 ${record.articleId}` : `Article ${record.articleId}`);
     else if (record.url) items.push(currentLanguage === "zh" ? "已记录网页地址" : "Page URL saved");
     return items.slice(0, 4);
@@ -7805,7 +7825,7 @@ console.log("示例代码块");
     if (!item) return;
     configureMarkdownEditor({
       title: item.title || item.fileName || "Queued Markdown",
-      meta: [item.fileName, `${Number(item.characters || 0).toLocaleString()} chars`, queueStatusLabel(item)].filter(Boolean).join(" · "),
+      meta: [item.fileName, formatCompactUnit(item.characters || 0, "char", "chars", "字符"), queueStatusLabel(item)].filter(Boolean).join(" · "),
       value: item.markdown,
       primaryLabel: "Save only",
       mode: "queue",

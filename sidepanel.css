@@ -3705,19 +3705,25 @@ textarea:focus-visible,
 
 .record-summary {
   display: flex;
-  flex-wrap: wrap;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
   gap: 4px;
   margin-top: 0;
+  overflow: hidden;
 }
 
 .record-summary span {
-  min-width: 0;
+  flex: 0 1 auto;
+  min-width: max-content;
   padding: 2px 0;
   color: color-mix(in oklch, var(--muted), transparent 4%);
   font-size: 10px;
   font-weight: 640;
   line-height: 1.2;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .record-summary span + span::before {
@@ -3743,10 +3749,12 @@ textarea:focus-visible,
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
 }
 
 .record-action-main {
   min-width: 0;
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -4905,6 +4913,7 @@ textarea:focus-visible,
     align-items: flex-start;
     flex-direction: column;
     gap: 5px;
+    width: 100%;
   }
 
   .record-use-button {
@@ -4914,6 +4923,10 @@ textarea:focus-visible,
 
   .record-action-icons {
     justify-content: flex-end;
+  }
+
+  .record-summary {
+    max-width: 100%;
   }
 
   .record-history-item time {

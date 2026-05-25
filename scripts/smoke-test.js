@@ -440,10 +440,19 @@ assert.ok(
   "queue feedback should explicitly tell users when drafts are added"
 );
 assert.ok(
+  sidepanelText.includes("function formatCompactCount") &&
+    sidepanelText.includes("function formatCompactUnit") &&
+    sidepanelText.includes('formatCompactUnit(record.characters, "char", "chars", "字")') &&
+    sidepanelText.includes('formatCompactUnit(item.characters || 0, "char", "chars", "字符")') &&
+    sidepanelCss.includes("flex-wrap: nowrap;") &&
+    sidepanelCss.includes("min-width: max-content;"),
+  "record and queue stats should use compact counts and avoid stretching record card actions"
+);
+assert.ok(
   sidepanelText.includes('parts.push(parsed.title ? "Title found" : "No title")') &&
     sidepanelText.includes('pluralizeUnit(resolvedCounts.image || 0, "image")') &&
     sidepanelText.includes('pluralizeUnit(resolvedCounts.code || 0, "code block")') &&
-    sidepanelText.includes('`${formattedLength} chars`') &&
+    sidepanelText.includes('formatCompactUnit(length, "char", "chars", "字符")') &&
     sidepanelText.includes("Web images: ${remoteCount}") &&
     sidepanelText.includes("Images: ${imageCount}") &&
     !sidepanelText.includes("Unreachable images stay as links.") &&
