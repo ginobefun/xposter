@@ -2296,6 +2296,11 @@ textarea:focus-visible,
   color: var(--warn);
 }
 
+.review-list li[data-note="media-limit"],
+.ledger-list li[data-ledger-kind="media-limit"] {
+  animation: xposter-subtle-note-in var(--motion-medium) var(--ease-out-quint) both;
+}
+
 .review-list li[data-tone="error"] {
   border-color: color-mix(in oklch, var(--danger), var(--line) 50%);
   color: var(--danger);
@@ -2586,6 +2591,54 @@ textarea:focus-visible,
   text-transform: uppercase;
 }
 
+.progress-cancel {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid color-mix(in oklch, var(--danger), var(--line) 48%);
+  background: color-mix(in oklch, var(--danger), var(--paper) 92%);
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 820;
+  transition:
+    background-color var(--motion-quick) ease,
+    border-color var(--motion-quick) ease,
+    color var(--motion-quick) ease,
+    opacity var(--motion-quick) ease,
+    transform var(--motion-quick) var(--ease-out-quart);
+}
+
+.progress-cancel[hidden] {
+  display: none;
+}
+
+.progress-cancel:hover {
+  background: color-mix(in oklch, var(--danger), var(--paper) 86%);
+  transform: translateY(-1px);
+}
+
+.progress-cancel:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.progress-cancel:disabled {
+  cursor: default;
+  opacity: 0.72;
+  transform: none;
+}
+
+.progress-cancel:disabled::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in oklch, var(--danger), transparent 78%), transparent);
+  transform: translateX(-120%);
+  animation: xposter-cancel-requested 1.2s linear infinite;
+}
+
 .inline-write-status[data-tone="work"] .progress-state,
 .inline-write-status[data-tone="done"] .progress-state,
 .inline-write-status[data-tone="ok"] .progress-state {
@@ -2658,6 +2711,26 @@ textarea:focus-visible,
   }
   to {
     background-position: -60% 0, 0 0;
+  }
+}
+
+@keyframes xposter-cancel-requested {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes xposter-subtle-note-in {
+  from {
+    opacity: 0.72;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -2814,6 +2887,9 @@ textarea:focus-visible,
   .draft-queue-item[data-status="writing"] .draft-queue-state::before,
   .record-edit-dialog,
   .record-edit-sheet,
+  .progress-cancel:disabled::after,
+  .review-list li[data-note="media-limit"],
+  .ledger-list li[data-ledger-kind="media-limit"],
   .inline-write-status[data-tone="work"],
   .inline-write-status[data-tone="work"] .progress-meter span::after {
     animation: none;
@@ -4112,6 +4188,10 @@ textarea:focus-visible,
   list-style: none;
 }
 
+.evidence-raw summary span {
+  min-width: 0;
+}
+
 .evidence-raw summary::-webkit-details-marker {
   display: none;
 }
@@ -4152,6 +4232,39 @@ textarea:focus-visible,
 
 .evidence-raw .evidence {
   margin-top: 10px;
+}
+
+.evidence-raw .section-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 9px;
+}
+
+.evidence-raw .section-head > div:first-child {
+  min-width: 0;
+}
+
+.evidence-raw .section-head h2 {
+  overflow-wrap: anywhere;
+}
+
+.evidence-raw .button-cluster {
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 6px;
+}
+
+.evidence-raw .button-cluster .secondary {
+  width: 100%;
+  min-width: 0;
+  padding-inline: 8px;
+  line-height: 1.15;
+  text-align: center;
+  white-space: normal;
 }
 
 .completion-audit {
@@ -4267,9 +4380,12 @@ textarea:focus-visible,
 .evidence {
   display: grid;
   gap: 10px;
+  min-width: 0;
 }
 
 .evidence pre {
+  width: 100%;
+  min-width: 0;
   margin: 0;
   max-height: 180px;
   overflow: auto;

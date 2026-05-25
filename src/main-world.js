@@ -6,6 +6,7 @@
     "[data-contents='true'] [contenteditable='true'], [contenteditable='true'][role='textbox'], [contenteditable='true'].public-DraftEditor-content, [contenteditable='true']";
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  let cancelRequested = false;
 
   function post(kind, payload = {}) {
     window.postMessage({ source: CHANNEL_FROM_MAIN, kind, ...payload }, "*");
@@ -13,6 +14,13 @@
 
   function progress(text, level = "work") {
     post("progress", { text, level });
+  }
+
+  function throwIfCancelled() {
+    if (!cancelRequested) return;
+    const error = new Error("Writing stopped by user.");
+    error.cancelled = true;
+    throw error;
   }
 
   function requestPreparedFile(operation, timeoutMs = 30000) {
@@ -430,6 +438,7 @@
   }
 
   async function uploadImageAtMarker(draftNode, imageOperation, existingAtomicBlocks) {
+    throwIfCancelled();
     const onFilesAdded = findOnFilesAdded();
     if (!onFilesAdded) return { ok: false, error: "X upload handler was not reachable" };
 
@@ -440,11 +449,13 @@
 
     const before = existingMediaEntities(draftNode.props.editorState.getCurrentContent());
     const preparedFile = await requestPreparedFile(imageOperation);
+    throwIfCancelled();
     const file = base64ToFile(preparedFile.base64, preparedFile.fileName, preparedFile.mime);
 
     onFilesAdded([file]);
     const deadline = Date.now() + 45000;
     while (Date.now() < deadline) {
+      throwIfCancelled();
       await sleep(350);
       draftNode = findDraftStateNode() || draftNode;
       const contentState = draftNode.props.editorState.getCurrentContent();
@@ -748,11 +759,14 @@
   }
 
   async function runFlow(payload) {
+    cancelRequested = false;
     let draftNode = findDraftStateNode();
     if (!draftNode) throw new Error("X Draft.js editor was not reachable");
     const articleId = articleIdFromUrl();
+    throwIfCancelled();
     progress("Pasting structured Markdown...");
     draftNode = await ensureDraftCharacterSample(draftNode);
+    throwIfCancelled();
     const writeResult = writeDraftBlocks(draftNode, payload.blocks);
     if (!writeResult.ok) {
       console.warn(LOG, "structured block write failed; falling back to paste", writeResult.error);
@@ -761,6 +775,7 @@
     draftNode = await waitForDraftMarkers(payload.markerPrefix, (payload.plan || []).length);
     if (!draftNode) throw new Error("X Draft.js editor was not reachable after writing Markdown");
     await sleep(150);
+    throwIfCancelled();
 
     const summary = {
       atomicOk: 0,
@@ -792,6 +807,7 @@
     const imageOps = (payload.plan || []).filter((item) => item.op.type === "image");
 
     if (atomicOps.length) {
+      throwIfCancelled();
       progress(`Inserting ${atomicOps.length} special block(s)...`);
       draftNode = findDraftStateNode() || draftNode;
       const result = insertAtomicBatch(draftNode, atomicOps);
@@ -812,6 +828,7 @@
 
     const uploads = [];
     for (let index = 0; index < imageOps.length; index += 1) {
+      throwIfCancelled();
       draftNode = findDraftStateNode() || draftNode;
       const op = imageOps[index];
       progress(`Uploading image ${index + 1}/${imageOps.length}...`);
@@ -819,6 +836,7 @@
       if (!result.ok && /timed out/i.test(result.error || "")) {
         progress(`Retrying image ${index + 1}...`, "warn");
         await sleep(1400);
+        throwIfCancelled();
         draftNode = findDraftStateNode() || draftNode;
         result = await uploadImageAtMarker(draftNode, op, protectedAtomicBlocks);
       }
@@ -848,6 +866,7 @@
     }
 
     if (uploads.length) {
+      throwIfCancelled();
       progress("Reordering uploaded media...");
       await sleep(900);
       const result = relocateImages(draftNode, uploads.filter((upload) => !upload.coverOnly), protectedAtomicBlocks);
@@ -856,6 +875,7 @@
     }
 
     if (payload.title) {
+      throwIfCancelled();
       progress("Setting title...");
       const result = await setTitleViaUi(payload.title);
       summary.title.ui = result;
@@ -873,6 +893,7 @@
     }
 
     if (payload.cover) {
+      throwIfCancelled();
       if (!articleId) {
         summary.cover.skippedReason = "No article id in URL";
         console.warn(LOG, "cover update skipped: no article id");
@@ -906,6 +927,7 @@
     summary.markersCleaned += cleanupMarkers(draftNode, payload.markerPrefix);
     kickRender(draftNode);
     await sleep(250);
+    throwIfCancelled();
     post("done", { summary });
   }
 
@@ -918,8 +940,17 @@
     if (event.data.kind === "run") {
       runFlow(event.data.payload).catch((error) => {
         console.error(LOG, error);
+        if (error?.cancelled) {
+          post("cancelled", { reason: error.message || "Writing stopped by user." });
+          return;
+        }
         post("error", { error: error?.message || String(error), stack: error?.stack || null });
       });
+      return;
+    }
+    if (event.data.kind === "cancel") {
+      cancelRequested = true;
+      progress("Writing stopped by user.", "warn");
       return;
     }
     if (event.data.kind === "upload-files") {

@@ -111,6 +111,7 @@ const coverOnlyPlan = shared.buildPastePlan(
 );
 const contentScriptText = fs.readFileSync(path.join(root, "src/content.js"), "utf8");
 const backgroundText = fs.readFileSync(path.join(root, "src/background.js"), "utf8");
+const mainWorldText = fs.readFileSync(path.join(root, "src/main-world.js"), "utf8");
 const sidepanelText = fs.readFileSync(path.join(root, "sidepanel.js"), "utf8");
 const sidepanelHtml = fs.readFileSync(path.join(root, "sidepanel.html"), "utf8");
 const sidepanelCss = fs.readFileSync(path.join(root, "sidepanel.css"), "utf8");
@@ -275,7 +276,7 @@ assert.equal(statusSandbox.statusHelpers.translateContentText("Preparing Markdow
 assert.equal(statusSandbox.statusHelpers.translateContentText("Writing article"), "正在写入文章", "X page status titles should be localized");
 assert.equal(statusSandbox.statusHelpers.articleExportLabel("copy"), "复制 Markdown", "X article export controls should localize action labels");
 assert.ok(
-  fs.readFileSync(path.join(root, "src/main-world.js"), "utf8").includes("uploadFilesToEditor"),
+  mainWorldText.includes("uploadFilesToEditor"),
   "main-world bridge should hand dropped image files to X's own uploader"
 );
 assert.ok(
@@ -289,6 +290,24 @@ assert.ok(
 assert.ok(
   sidepanelText.includes("remoteImageOriginsForMarkdowns(draftQueue.map((item) => item.markdown), importOptions)"),
   "batch queue writes should request all remote image origins during the user action"
+);
+assert.ok(
+  sidepanelHtml.includes('id="cancelImport"') &&
+    sidepanelText.includes('sendToActiveTab({ type: "xposter:cancel-import" })') &&
+    contentScriptText.includes('message?.type === "xposter:cancel-import"') &&
+    contentScriptText.includes("function cancelActiveImport") &&
+    contentScriptText.includes("function throwIfImportCancelled") &&
+    mainWorldText.includes("throwIfCancelled") &&
+    mainWorldText.includes('event.data.kind === "cancel"'),
+  "article writes should expose a stop control that cancels the page upload loop"
+);
+assert.ok(
+  sidepanelText.includes("const X_ARTICLE_MEDIA_SOFT_LIMIT = 4") &&
+    sidepanelText.includes("X_ARTICLE_MEDIA_LIMIT_WARNING") &&
+    sidepanelText.includes("function mediaUploadEstimate") &&
+    sidepanelText.includes("mediaLimitWarningText") &&
+    sidepanelText.includes("X Articles media note"),
+  "draft preflight should warn before X rejects Article media beyond its visible 4-photo media block limit"
 );
 assert.ok(
   sidepanelText.includes('options: importOptionsPayload()'),

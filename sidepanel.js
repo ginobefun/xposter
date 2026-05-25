@@ -102,6 +102,7 @@
     liveProgressBar: document.getElementById("liveProgressBar"),
     liveProgressTitle: document.getElementById("liveProgressTitle"),
     liveProgressDetail: document.getElementById("liveProgressDetail"),
+    cancelImport: document.getElementById("cancelImport"),
     recoveryPanel: document.getElementById("recoveryPanel"),
     recoveryMeta: document.getElementById("recoveryMeta"),
     recoveryState: document.getElementById("recoveryState"),
@@ -172,6 +173,9 @@
   const MAX_DRAFT_QUEUE_STORAGE_BYTES = 4 * 1024 * 1024;
   const MAX_DRAFT_QUEUE_ITEM_BYTES = 512 * 1024;
   const MAX_RECORD_MARKDOWN_CHARS = 120000;
+  const X_ARTICLE_MEDIA_SOFT_LIMIT = 4;
+  const X_ARTICLE_MEDIA_LIMIT_WARNING =
+    "X Articles media note: X's editor says one media block can include 1 GIF/video or up to 4 photos. This draft has {count} media upload items; extra images may be rejected by X.";
   const MARKDOWN_FILE_RE = /\.(md|markdown|mdown|mkd|txt)$/i;
   const MARKDOWN_FILE_ACCEPT = ".md,.markdown,.mdown,.mkd,.txt,text/markdown,text/plain";
   const MARKDOWN_TRANSFER_MIME_RE = /^(text\/markdown|text\/plain|application\/octet-stream)$/i;
@@ -330,6 +334,7 @@ console.log("示例代码块");
   let queueMotionTimer = null;
   let animatedQueueItemIds = new Set();
   let batchWriting = false;
+  let importCancelRequested = false;
   let importOptions = { setTitle: true, setCover: true };
   let successFeedbackOptions = { confetti: true, sound: true, soundStyle: "soft", volume: SUCCESS_SOUND_DEFAULT_VOLUME };
   let articleExportOptions = { enabled: true, mode: "copy" };
@@ -397,6 +402,15 @@ console.log("示例代码块");
       "Writing all...": "正在批量写入...",
       "Writing queued drafts one by one.": "正在逐篇写入队列草稿。",
       "Queued drafts are written one by one. Each successful draft leaves the list.": "队列草稿会逐篇写入。成功写入后会从列表移除。",
+      "Stop": "停止",
+      "Stopping...": "正在停止...",
+      "Stop requested. xPoster will stop before the next upload step.": "已请求停止。xPoster 会在下一个上传步骤前停下。",
+      "Writing stopped by user.": "写入已停止。",
+      Stopped: "已停止",
+      "Stop request failed: active X tab did not respond": "停止请求失败：当前 X 标签页没有响应",
+      [X_ARTICLE_MEDIA_LIMIT_WARNING]: "X 文章媒体提醒：X 编辑器提示一个媒体块可包含 1 个 GIF/视频，或最多 4 张照片。这篇草稿有 {count} 个媒体上传项；多出的图片可能会被 X 拒绝。",
+      "X Article media note": "X 文章媒体提醒",
+      "Review before writing": "写入前确认",
       "Focus the Markdown editor below.": "光标已放到下面的 Markdown 编辑框。",
       "Review queue": "检查队列",
       "Write queue": "写入队列",
@@ -905,6 +919,15 @@ console.log("示例代码块");
       "Save only": "仅保存",
       "Writing queued drafts one by one.": "正在逐篇写入队列草稿。",
       "Queued drafts are written one by one. Each successful draft leaves the list.": "队列草稿会逐篇写入。成功写入后会从列表移除。",
+      "Stop": "停止",
+      "Stopping...": "正在停止...",
+      "Stop requested. xPoster will stop before the next upload step.": "已请求停止。xPoster 会在下一个上传步骤前停下。",
+      "Writing stopped by user.": "写入已停止。",
+      Stopped: "已停止",
+      "Stop request failed: active X tab did not respond": "停止请求失败：当前 X 标签页没有响应",
+      [X_ARTICLE_MEDIA_LIMIT_WARNING]: "X 文章媒体提醒：X 编辑器提示一个媒体块可包含 1 个 GIF/视频，或最多 4 张照片。这篇草稿有 {count} 个媒体上传项；多出的图片可能会被 X 拒绝。",
+      "X Article media note": "X 文章媒体提醒",
+      "Review before writing": "写入前确认",
       "Focus the Markdown editor below.": "光标已放到下面的 Markdown 编辑框。",
       "Review queue": "检查队列",
       "Write queue": "写入队列",
@@ -1338,6 +1361,15 @@ console.log("示例代码块");
       "Add a Markdown draft first.": "请先添加 Markdown 草稿。",
       "Writing queued drafts one by one.": "正在逐篇写入队列草稿。",
       "Queued drafts are written one by one. Each successful draft leaves the list.": "队列草稿会逐篇写入。成功写入后会从列表移除。",
+      "Stop": "停止",
+      "Stopping...": "正在停止...",
+      "Stop requested. xPoster will stop before the next upload step.": "已请求停止。xPoster 会在下一个上传步骤前停下。",
+      "Writing stopped by user.": "写入已停止。",
+      Stopped: "已停止",
+      "Stop request failed: active X tab did not respond": "停止请求失败：当前 X 标签页没有响应",
+      [X_ARTICLE_MEDIA_LIMIT_WARNING]: "X 文章媒体提醒：X 编辑器提示一个媒体块可包含 1 个 GIF/视频，或最多 4 张照片。这篇草稿有 {count} 个媒体上传项；多出的图片可能会被 X 拒绝。",
+      "X Article media note": "X 文章媒体提醒",
+      "Review before writing": "写入前确认",
       "Focus the Markdown editor below.": "光标已放到下面的 Markdown 编辑框。",
       "Review queue": "检查队列",
       "Write queue": "写入队列",
@@ -1651,6 +1683,7 @@ console.log("示例代码块");
       "Check that the open X Article can accept text and media before importing.": "导入前检查当前 X 文章 是否能接收文字和媒体。",
       "Check that the open X Article can accept text and upload images before importing.": "导入前检查当前 X 文章是否能接收文字并上传图片。",
       "Check that this X Article can accept text and images before importing.": "导入前检查这篇 X 文章是否能接收文字和图片。",
+      "Open the X editor and run Check so images and tables can upload.": "打开 X 编辑器并运行检查，这样图片和表格才能上传。",
       "Check editor": "检查编辑器",
       "Choose local image folder": "选择本地图片文件夹",
       "Relative image paths need a readable folder selected from the active X tab.": "相对图片路径需要从当前 X 标签页选择一个可读取文件夹。",
@@ -2263,6 +2296,7 @@ console.log("示例代码块");
       [/^(\d+) image\(s\) ready, (\d+) need attention$/, "$1 张图片已就绪，$2 张保留为链接"],
       [/^(\d+) image\(s\) uploaded$/, "$1 张图片已上传"],
       [/^(\d+) web image\(s\) will be tried during Write\.$/, "$1 张网页图片会在写入时尝试处理。"],
+      [/^(\d+) web image\(s\) will be downloaded in the background; failed downloads stay as Markdown links\.$/, "$1 张网页图片会在写入时尝试下载；失败图片会保留为 Markdown 链接。"],
       [/^(\d+) web image\(s\) will be tried while writing to X draft\.$/, "$1 张网页图片会在写入时尝试上传。"],
       [/^(\d+) web image\(s\) may stay as links unless replaced\.$/, "$1 张网页图片可能保留为链接，除非替换为可下载图片。"],
       [/^(\d+) web image\(s\) may stay as links unless the URLs are replaced\.$/, "$1 张网页图片可能保留为链接，除非替换为可访问 URL。"],
@@ -2280,6 +2314,8 @@ console.log("示例代码块");
       [/^(\d+) upload item need the X editor\.$/, "$1 个上传项需要 X 编辑器。"],
       [/^(\d+) media upload item\(s\) can use X upload handler\.$/, "$1 个媒体上传项可使用 X 上传能力。"],
       [/^(\d+) media upload item\(s\) can upload through X\.$/, "$1 个媒体上传项可通过 X 上传。"],
+      [/^(\d+) media item\(s\) will be uploaded through X \((\d+) image, (\d+) rendered table\)\.$/, "$1 个媒体项会通过 X 上传（$2 张图片，$3 个表格图片）。"],
+      [/^(\d+) special content block\(s\) will be placed in X\.$/, "$1 个特殊内容块会放入 X。"],
       [/^(\d+) local image\(s\) can resolve through (.+)\.$/, "$1 张本地图片可通过 $2 读取。"],
       [/^(\d+) local image\(s\) need a readable folder\.$/, "$1 张本地图片需要选择可读取文件夹。"],
       [/^(\d+) remote image\(s\) need source-site permission before upload\.$/, "$1 张网页图片会在写入时尝试处理。"],
@@ -2369,6 +2405,8 @@ console.log("示例代码块");
       [/^(\d+) additional special-content step\(s\) hidden\.$/, "另有 $1 个特殊内容步骤已隐藏。"],
       [/^(\d+) ledger item\(s\) mapped; (\d+) waiting, (\d+) direct HTML paste\.$/, "已规划 $1 个导入项；$2 个等待处理，$3 个会直接写入正文。"],
       [/^(\d+) import item\(s\) planned; (\d+) waiting, (\d+) direct text write\.$/, "已规划 $1 个导入项；$2 个等待处理，$3 个会直接写入正文。"],
+      [/^(\d+) item\(s\) planned; (\d+) waiting; (\d+) text item\(s\) ready\.$/, "已规划 $1 个导入项；$2 个等待处理；$3 个文本项就绪。"],
+      [/^(\d+) item\(s\) need attention; (\d+) waiting; (\d+) text item\(s\) ready\.$/, "$1 个导入项需要处理；$2 个等待处理；$3 个文本项就绪。"],
       [/^(\d+) blocked ledger item\(s\), (\d+) waiting, (\d+) direct HTML paste\.$/, "$1 个导入项受阻，$2 个等待处理，$3 个会直接写入正文。"],
       [/^(\d+) blocked import item\(s\), (\d+) waiting, (\d+) direct text write\.$/, "$1 个导入项受阻，$2 个等待处理，$3 个会直接写入正文。"],
       [/^(\d+) text blocks$/, "$1 个文本块"],
@@ -2385,6 +2423,7 @@ console.log("示例代码块");
       [/^(\d+) table\(s\)$/, "$1 个表格"],
       [/^(\d+) special block\(s\)$/, "$1 个特殊内容"],
       [/^Recognized: (.+)$/, "已识别：$1"],
+      [/^Title detected: (.+)$/, "已检测标题：$1"],
       [/^(\d+) web image\(s\)$/, "$1 张网页图片"],
       [/^(\d+) text part\(s\) · (\d+) image\(s\) · (\d+) table\(s\) · (\d+) special block\(s\) · image links convert during Import$/, "$1 个文本部分 · $2 张图片 · $3 个表格 · $4 个特殊内容 · 图片链接会在导入时转换"],
       [/^Text blocks (\d+)$/, "文本块 $1"],
@@ -2418,6 +2457,10 @@ console.log("示例代码块");
       [/^Import complete in (.+)\.$/, "导入完成，用时 $1。"],
       [/^Writing complete in (.+)\.$/, "写入完成，用时 $1。"],
       [/^Writing complete in (.+) with (\d+) media warning\(s\)\.$/, "写入完成，用时 $1；有 $2 个媒体提醒。"],
+      [/^Uploading image (\d+)\/(\d+)\.\.\.$/, "正在上传图片 $1/$2..."],
+      [/^Stop request failed: (.+)$/, "停止请求失败：$1"],
+      [/^First H1 was promoted to article title: (.+)$/, "第一个 H1 会作为文章标题：$1"],
+      [/^Cover candidate: (.+)$/, "封面候选：$1"],
       [/^Import failed: (.+)$/, "导入失败：$1"],
       [/^Target locked: (.+)\.$/, "目标已锁定：$1。"],
       [/^Publishing check found (\d+) blocker\(s\)\.$/, "发布前检查发现 $1 个阻塞项。"],
@@ -2606,6 +2649,19 @@ console.log("示例代码块");
     }
   }
 
+  async function cancelImport() {
+    if (importCancelRequested) return;
+    importCancelRequested = true;
+    updateLiveProgress();
+    log("Stop requested. xPoster will stop before the next upload step.");
+    const response = await sendToActiveTab({ type: "xposter:cancel-import" });
+    if (!response?.ok) {
+      importCancelRequested = false;
+      log(response?.error ? `Stop request failed: ${localizeText(response.error)}` : "Stop request failed: active X tab did not respond");
+      updateLiveProgress();
+    }
+  }
+
   function isRemoteHttpImageSource(source) {
     return shared.isRemoteHttpImageSource(source);
   }
@@ -2646,6 +2702,40 @@ console.log("示例代码块");
 
   function remoteImageOrigins(parsed = latestParsed) {
     return Array.from(remoteImageOriginCounts(parsed).keys());
+  }
+
+  function mediaUploadEstimate(parsed = latestParsed) {
+    if (!parsed?.segments?.length) {
+      return {
+        bodyImages: 0,
+        tables: 0,
+        coverOnly: 0,
+        total: 0,
+        overSoftLimit: false
+      };
+    }
+    const bodyImages = parsed.segments.filter((segment) => segment.type === "image").length;
+    const tables = parsed.segments.filter((segment) => segment.type === "table").length;
+    const coverSource = importOptions.setCover === false ? "" : String(parsed.cover || "").trim();
+    const coverOnly = coverSource && !parsed.segments.some(
+      (segment) => segment.type === "image" && shared.imageSourcesMatch(segment.source, coverSource)
+    )
+      ? 1
+      : 0;
+    const total = bodyImages + tables + coverOnly;
+    return {
+      bodyImages,
+      tables,
+      coverOnly,
+      total,
+      overSoftLimit: total > X_ARTICLE_MEDIA_SOFT_LIMIT
+    };
+  }
+
+  function mediaLimitWarningText(estimate = mediaUploadEstimate()) {
+    const count = String(estimate.total || 0);
+    if (i18n) return i18n.t(X_ARTICLE_MEDIA_LIMIT_WARNING, { count });
+    return translateText(X_ARTICLE_MEDIA_LIMIT_WARNING).replace("{count}", count);
   }
 
   function remoteImagePermissionPattern(origin) {
@@ -3530,9 +3620,10 @@ console.log("示例代码块");
       const blocked = rows.filter((row) => row.tone === "error").length;
       const waiting = rows.filter((row) => row.tone === "warn").length;
       const direct = rows.filter((row) => row.path === "Write text").length;
+      const plannedRows = Math.max(0, rows.length - rows.filter((row) => row.kind === "media-limit").length);
       els.importLedgerMeta.textContent = blocked
         ? `${blocked} item(s) need attention; ${waiting} waiting; ${direct} text item(s) ready.`
-        : `${rows.length} item(s) planned; ${waiting} waiting; ${direct} text item(s) ready.`;
+        : `${plannedRows} item(s) planned; ${waiting} waiting; ${direct} text item(s) ready.`;
     }
     els.importLedgerList.innerHTML = rows
       .slice(0, 18)
@@ -3571,6 +3662,7 @@ console.log("示例代码块");
     const vault = status.vault || latestDiagnostics?.vault || {};
     const bridgeReady = Boolean(main.hasDraftStateNode);
     const uploadReady = Boolean(main.hasOnFilesAdded);
+    const mediaEstimate = mediaUploadEstimate(parsed);
     const localVaultReady = Boolean(vault.configured && vault.permission === "granted");
     const remoteProbeBySource = new Map((remoteImageProbeStatus.results || []).map((item) => [item.source, item]));
     const metadataOptions = importOptionsPayload();
@@ -3592,6 +3684,18 @@ console.log("示例代码块");
 
     let operationIndex = 0;
     const rows = [];
+
+    if (mediaEstimate.overSoftLimit) {
+      rows.push({
+        index: 0,
+        indexLabel: "!",
+        kind: "media-limit",
+        label: "X Article media note",
+        detail: mediaLimitWarningText(mediaEstimate),
+        path: "Review before writing",
+        tone: "warn"
+      });
+    }
 
     if (metadataOptions.setTitle && parsed.title) {
       rows.push({
@@ -3924,7 +4028,7 @@ console.log("示例代码块");
         ? `${warnings} warning(s), no blockers`
         : "No blockers found";
     els.reviewList.innerHTML = notes
-      .map((note) => `<li data-tone="${note.tone}">${shared.escapeHtml(note.text)}</li>`)
+      .map((note) => `<li data-tone="${note.tone}" ${note.kind ? `data-note="${shared.escapeHtml(note.kind)}"` : ""}>${shared.escapeHtml(note.text)}</li>`)
       .join("");
     translateDynamicDom(els.reviewList.closest("section"));
   }
@@ -3971,6 +4075,11 @@ console.log("示例代码块");
     }
 
     if (remoteImages.length) notes.push({ tone: "ok", text: `${remoteImages.length} web image(s) will be downloaded in the background; failed downloads stay as Markdown links.` });
+
+    const mediaEstimate = mediaUploadEstimate(parsed);
+    if (mediaEstimate.overSoftLimit) {
+      notes.push({ tone: "warn", kind: "media-limit", text: mediaLimitWarningText(mediaEstimate) });
+    }
 
     if (uploadCount) {
       notes.push({
@@ -4279,6 +4388,13 @@ console.log("示例代码块");
     const remoteCount = remoteHttpImageSegments(latestParsed).length;
     if (remoteCount) return remoteImageWriteHint(remoteCount);
     const imageCount = latestCounts?.image || 0;
+    const mediaEstimate = mediaUploadEstimate(latestParsed);
+    if (mediaEstimate.overSoftLimit) {
+      return {
+        tone: "warn",
+        text: mediaLimitWarningText(mediaEstimate)
+      };
+    }
     return {
       tone: "ready",
       text: imageCount
@@ -4288,6 +4404,13 @@ console.log("示例代码块");
   }
 
   function remoteImageWriteHint(remoteCount) {
+    const mediaEstimate = mediaUploadEstimate(latestParsed);
+    if (mediaEstimate.overSoftLimit) {
+      return {
+        tone: "warn",
+        text: mediaLimitWarningText(mediaEstimate)
+      };
+    }
     if (remoteImageProbeStatus.state === "checking") {
       return { tone: "ready", text: `Web images: ${remoteCount}` };
     }
@@ -5064,10 +5187,12 @@ console.log("示例代码块");
       {
         id: "uploads",
         label: "Uploads",
-        tone: images || tables ? (main.hasOnFilesAdded ? "ok" : latestDiagnostics ? "error" : "warn") : "ok",
+        tone: images || tables
+          ? (main.hasOnFilesAdded ? "ok" : latestDiagnostics ? "error" : "warn")
+          : "ok",
         detail:
           images || tables
-              ? main.hasOnFilesAdded
+            ? main.hasOnFilesAdded
               ? `${images + tables} media upload item(s) can upload through X.`
               : "Open the X editor and run Check so images and tables can upload."
             : "No image or table uploads required."
@@ -5210,7 +5335,8 @@ console.log("示例代码块");
             origins: remoteImageOrigins(latestParsed),
             access: remoteImageAccessStatus,
             probe: remoteImageProbeStatus
-          }
+          },
+          mediaUploadEstimate: mediaUploadEstimate(latestParsed)
         }
       : {
           title: null,
@@ -5224,7 +5350,8 @@ console.log("示例代码块");
             origins: [],
             access: remoteImageAccessStatus,
             probe: remoteImageProbeStatus
-          }
+          },
+          mediaUploadEstimate: mediaUploadEstimate(null)
         };
 
     return {
@@ -5625,6 +5752,13 @@ console.log("示例代码块");
       latestProgress.text = "Writing failed";
       latestProgress.detail = latestProgress.error;
       latestProgress.percent = Math.max(latestProgress.percent || 0, 100);
+    } else if (eventName === "cancelled") {
+      latestProgress.state = "cancelled";
+      latestProgress.level = "warn";
+      latestProgress.error = payload.reason || "Writing stopped by user.";
+      latestProgress.text = "Writing stopped by user.";
+      latestProgress.detail = payload.reason || "Writing stopped by user.";
+      latestProgress.percent = Math.max(latestProgress.percent || 0, 100);
     } else {
       latestProgress.state = "running";
       latestProgress.level = payload.level || "work";
@@ -5640,6 +5774,7 @@ console.log("示例代码块");
   function progressLevelForEvent(eventName) {
     if (eventName === "complete") return "done";
     if (eventName === "error") return "error";
+    if (eventName === "cancelled") return "warn";
     if (eventName === "parsed") return "work";
     return "work";
   }
@@ -5648,17 +5783,18 @@ console.log("示例代码块");
     if (eventName === "status") return localizeText(payload.text || "Status update");
     if (eventName === "parsed") return "Markdown parsed";
     if (eventName === "complete") return "Writing complete";
+    if (eventName === "cancelled") return payload.reason || "Writing stopped by user.";
     if (eventName === "error") return payload.error || "Writing failed";
     return localizeText(payload.text || eventName);
   }
 
   function progressDetailForStatus(text) {
-    if (/prepar|准备/.test(text)) return localizeText("Preparing Markdown, images, and the X editor.");
-    if (/writing|paste|structured|写入/.test(text)) return localizeText("Writing the article body into X.");
-    if (/upload|上传/.test(text)) return localizeText("Uploading prepared images and rendered tables through X.");
-    if (/reorder|marker|special|insert|放置|清理/.test(text)) return localizeText("Placing images, tweets, code, and dividers into the article.");
-    if (/title|cover|标题|封面/.test(text)) return localizeText("Setting the title and cover after the body import.");
-    if (/imported|written|complete|完成|已写入/.test(text)) return localizeText("Writing finished.");
+    if (/prepar|准备/i.test(text)) return localizeText("Preparing Markdown, images, and the X editor.");
+    if (/writing|paste|structured|写入/i.test(text)) return localizeText("Writing the article body into X.");
+    if (/upload|上传/i.test(text)) return localizeText("Uploading prepared images and rendered tables through X.");
+    if (/reorder|marker|special|insert|放置|清理/i.test(text)) return localizeText("Placing images, tweets, code, and dividers into the article.");
+    if (/title|cover|标题|封面/i.test(text)) return localizeText("Setting the title and cover after the body import.");
+    if (/imported|written|complete|完成|已写入/i.test(text)) return localizeText("Writing finished.");
     return text ? localizeText(text) : localizeText("Live status received from the active X tab.");
   }
 
@@ -5695,10 +5831,20 @@ console.log("示例代码块");
     const state = latestProgress || createLiveProgressState();
     const tone = state.level === "done" ? "done" : state.level || state.state || "idle";
     els.liveProgress.dataset.tone = tone;
-    els.liveProgressState.textContent = state.state === "running" ? "Running" : toneLabel(tone);
+    els.liveProgressState.textContent = state.state === "running"
+      ? "Running"
+      : state.state === "cancelled"
+        ? "Stopped"
+        : toneLabel(tone);
     els.liveProgressBar.style.width = `${Math.max(0, Math.min(100, Number(state.percent || 0)))}%`;
     els.liveProgressTitle.textContent = state.text || "Nothing is running";
     els.liveProgressDetail.textContent = state.detail || "Write progress appears here while xPoster fills X.";
+    if (els.cancelImport) {
+      const cancellable = state.state === "running" || state.state === "parsed";
+      els.cancelImport.hidden = !cancellable;
+      els.cancelImport.disabled = importCancelRequested || !cancellable;
+      setLocalizedText(els.cancelImport, importCancelRequested ? "Stopping..." : "Stop");
+    }
     const events = state.events?.length ? state.events : [];
     if (!events.length) {
       translateDynamicDom(els.liveProgress);
@@ -6167,6 +6313,9 @@ console.log("示例代码块");
     updatePreflight();
     updateWriteButton({ busy: true });
     resetLiveProgress("import");
+    importCancelRequested = false;
+    const mediaEstimate = mediaUploadEstimate(parsed);
+    if (mediaEstimate.overSoftLimit) log(mediaLimitWarningText(mediaEstimate));
     const target = await prepareSimpleWriteTarget(parsed);
     if (!target.ok) {
       log(target.reason || "Could not prepare X Article.");
@@ -6186,12 +6335,27 @@ console.log("示例代码块");
       }
       return { ok: false, error: target.reason || "Could not prepare X Article." };
     }
+    if (importCancelRequested) {
+      importCancelRequested = false;
+      log("Writing stopped by user.");
+      recordLiveProgressEvent("cancelled", { reason: "Writing stopped by user." });
+      updateWriteButton();
+      updateLiveProgress();
+      activeWriteQueueItemId = null;
+      if (queueItemId) {
+        draftQueue = draftQueue.map((item) => item.id === queueItemId && item.status === "writing" ? { ...item, status: "queued" } : item);
+        persistDraftQueue();
+        renderDraftQueue();
+      }
+      return { ok: false, error: "Writing stopped by user.", cancelled: true };
+    }
     if (queueItemId) {
       draftQueue = draftQueue.map((item) => item.id === queueItemId ? { ...item, status: "writing" } : item);
       persistDraftQueue();
       renderDraftQueue();
     }
     const response = await sendToActiveTab({ type: "xposter:import-markdown", markdown, options: importOptionsPayload() });
+    importCancelRequested = false;
     if (response?.ok) {
       const seconds = ((response.summary?.elapsedMs || 0) / 1000).toFixed(1);
       const warnings = response.summary?.mediaWarnings?.total || response.summary?.main?.imgFail || 0;
@@ -6203,7 +6367,11 @@ console.log("示例代码块");
       triggerSuccessFeedback(response.summary);
     } else {
       log(`Import failed: ${response?.error || "unknown error"}`);
-      if (latestProgress.state !== "error") recordLiveProgressEvent("error", { error: response?.error || "unknown error" });
+      if (response?.cancelled) {
+        recordLiveProgressEvent("cancelled", { reason: response?.error || "Writing stopped by user." });
+      } else if (latestProgress.state !== "error") {
+        recordLiveProgressEvent("error", { error: response?.error || "unknown error" });
+      }
       captureEvidence("import-error", { result: response, targetContext: target.targetContext, pageStatus: latestPageStatus, diagnostics: latestDiagnostics });
       activeWriteQueueItemId = null;
       if (queueItemId) {
@@ -6214,12 +6382,15 @@ console.log("示例代码块");
     }
     updatePreflight();
     updateWriteButton();
+    updateLiveProgress();
     const pageStateRefresh = refreshPageState().catch(() => null);
     if (response?.ok) {
       setCompactImportStatus(response.summary);
       void pageStateRefresh.then(() => setCompactImportStatus(response.summary));
     }
-    return response?.ok ? { ok: true, response } : { ok: false, error: response?.error || "unknown error", response };
+    return response?.ok
+      ? { ok: true, response }
+      : { ok: false, error: response?.error || "unknown error", cancelled: Boolean(response?.cancelled), response };
   }
 
   async function importDraft() {
@@ -6258,7 +6429,7 @@ console.log("示例代码块");
       while (draftQueue.length > 0) {
         const item = draftQueue[0];
         const result = await importQueueItem(item.id);
-        if (!result?.ok) break;
+        if (!result?.ok || result?.cancelled) break;
         await delay(300);
       }
     } finally {
@@ -8113,6 +8284,7 @@ console.log("示例代码块");
   });
   window.addEventListener("pagehide", flushDraftSave);
   els.importDraft.addEventListener("click", runImportButtonAction);
+  els.cancelImport?.addEventListener("click", cancelImport);
   els.pageState?.addEventListener("click", async () => {
     if (els.pageState.dataset.pageAction === "openArticles") await openArticles();
   });

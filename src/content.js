@@ -27,6 +27,7 @@
     "Could not write": "无法写入",
     "Writing article": "正在写入文章",
     "Preparing Markdown...": "正在准备 Markdown...",
+    "Stop requested": "已请求停止",
     "Open X Articles first": "请先打开 X 文章",
     "X editor bridge is not ready": "X 编辑器桥接尚未就绪",
     "Writing into X editor...": "正在写入 X 编辑器...",
@@ -81,6 +82,8 @@
     "No image file found": "未找到图片文件",
     "No image link found": "未找到图片链接",
     "Import already running": "导入正在进行中",
+    "Writing stopped by user.": "写入已停止。",
+    "Stopping after the current upload step...": "当前上传步骤结束后停止...",
     "X editor bridge did not respond": "X 编辑器桥接没有响应",
     "X image upload failed": "X 图片上传失败",
     "Local image folder cleared": "本地图片文件夹已清除",
@@ -114,6 +117,8 @@
     mainReady: false,
     runtimeInvalidated: false,
     currentMarkdown: "",
+    cancelRequested: false,
+    activeRun: null,
     language: "en",
     articleExport: {
       enabled: true,
@@ -304,6 +309,7 @@
     const progress = (start, span = 0) => Math.round(start + span * (fraction ?? 0));
 
     if (/preparing markdown/.test(normalized)) return 6;
+    if (/stopping after/.test(normalized)) return 100;
     if (/preparing (?:\d+\s+)?image|prepared \d/.test(normalized)) return progress(10, 18);
     if (/rendering \d+ table/.test(normalized)) return 32;
     if (/writing into x editor|pasting structured/.test(normalized)) return 40;
@@ -388,10 +394,18 @@
     showStatus(text, level, timeout);
   }
 
+  function throwIfImportCancelled() {
+    if (!state.cancelRequested) return;
+    const error = new Error("Writing stopped by user.");
+    error.cancelled = true;
+    throw error;
+  }
+
   function statusTitleForLevel(level) {
     if (level === "export") return "Markdown exported";
     if (level === "queue") return "Markdown queued";
     if (level === "done") return "Article written";
+    if (level === "cancel") return "Stop requested";
     if (level === "warn") return "Image note";
     if (level === "error") return "Could not write";
     return "Writing article";
@@ -508,6 +522,11 @@
         display: none;
       }
       #${STATUS_ID}[data-level="warn"] {
+        --__xposter-status-tone: var(--__xposter-status-warn);
+        --__xposter-status-tone-text: var(--__xposter-status-warn);
+        border-color: color-mix(in oklch, var(--__xposter-status-warn), var(--__xposter-status-line) 42%);
+      }
+      #${STATUS_ID}[data-level="cancel"] {
         --__xposter-status-tone: var(--__xposter-status-warn);
         --__xposter-status-tone-text: var(--__xposter-status-warn);
         border-color: color-mix(in oklch, var(--__xposter-status-warn), var(--__xposter-status-line) 42%);
@@ -657,13 +676,22 @@
     });
   }
 
+  function cancelActiveImport() {
+    state.cancelRequested = true;
+    showStatus("Stopping after the current upload step...", "cancel");
+    window.postMessage({ source: CHANNEL_TO_MAIN, kind: "cancel" }, "*");
+    return { ok: true, cancelled: true };
+  }
+
   function runMain(payload, filePayloads = new Map()) {
     return new Promise((resolve, reject) => {
       let timeout = null;
+      state.activeRun = { reject };
       const refreshTimeout = () => {
         clearTimeout(timeout);
         timeout = window.setTimeout(() => {
           window.removeEventListener("message", listener);
+          if (state.activeRun?.reject === reject) state.activeRun = null;
           reject(new Error("X editor bridge did not respond"));
         }, 60000);
       };
@@ -695,12 +723,24 @@
         if (message.kind === "done") {
           clearTimeout(timeout);
           window.removeEventListener("message", listener);
+          if (state.activeRun?.reject === reject) state.activeRun = null;
           resolve(message.summary || {});
+          return;
+        }
+        if (message.kind === "cancelled") {
+          clearTimeout(timeout);
+          window.removeEventListener("message", listener);
+          if (state.activeRun?.reject === reject) state.activeRun = null;
+          const error = new Error(message.reason || "Writing stopped by user.");
+          error.cancelled = true;
+          error.mainSummary = message.summary || null;
+          reject(error);
           return;
         }
         if (message.kind === "error") {
           clearTimeout(timeout);
           window.removeEventListener("message", listener);
+          if (state.activeRun?.reject === reject) state.activeRun = null;
           reject(new Error(message.error || "X editor bridge failed"));
         }
       };
@@ -714,14 +754,17 @@
     if (state.busy) return { ok: false, error: "Import already running" };
     const importOptions = normalizeImportOptions(options);
     state.busy = true;
+    state.cancelRequested = false;
     state.currentMarkdown = markdown;
     const startedAt = performance.now();
     showStatus("Preparing Markdown...", "work");
     try {
+      throwIfImportCancelled();
       if (!isArticleRoute()) throw new Error("Open X Articles first");
       if (origin !== "paste" && !findEditor()) {
         await ensureEditorReadyForFileImport();
       }
+      throwIfImportCancelled();
       const parsed = shared.parseMarkdown(markdown, importOptions);
       const { segments, dropped } = shared.applyLimits(parsed.segments, DEFAULT_LIMITS);
       const limitedParsed = { ...parsed, segments };
@@ -737,16 +780,21 @@
         : null;
 
       if (!(await waitForMainReady())) throw new Error("X editor bridge is not ready");
+      throwIfImportCancelled();
 
       const coverLocalImage = coverSegment && shared.isLocalImageSource(coverSegment.source) ? coverSegment : null;
       if (localImages.length || coverLocalImage) {
         await ensureVaultForLocalImages(localImages.length + (coverLocalImage ? 1 : 0));
       }
+      throwIfImportCancelled();
       const imageMap = await prepareImages(segments);
+      throwIfImportCancelled();
       const coverResult = coverSegment
         ? await loadImageWithRetry(coverSegment.source, "cover")
         : null;
+      throwIfImportCancelled();
       const tableMap = await prepareTables(segments);
+      throwIfImportCancelled();
       const mediaFailures = collectMediaFailures(imageMap, "image")
         .concat(coverResult && !coverResult.ok ? collectMediaFailures(new Map([[coverSegment, coverResult]]), "image") : [])
         .concat(collectMediaFailures(tableMap, "table"));
@@ -759,6 +807,7 @@
       pastePlan.cover = limitedParsed.cover || null;
       pastePlan.origin = origin;
 
+      throwIfImportCancelled();
       showStatus("Writing into X editor...", "work");
       const mainSummary = await runMain(pastePlan, filePayloads);
       const elapsedMs = Math.round(performance.now() - startedAt);
@@ -782,11 +831,18 @@
       return { ok: true, summary };
     } catch (error) {
       const message = error?.message || String(error);
+      if (error?.cancelled) {
+        showStatus(message, "warn", 5000);
+        broadcast({ type: "cancelled", reason: message, mainSummary: error?.mainSummary || null });
+        return { ok: false, error: message, cancelled: true, mainSummary: error?.mainSummary || null };
+      }
       showStatus(message, "error", 8000);
       broadcast({ type: "error", error: message, mediaFailures: error?.mediaFailures || null, mainSummary: error?.mainSummary || null });
       return { ok: false, error: message };
     } finally {
       state.busy = false;
+      state.cancelRequested = false;
+      state.activeRun = null;
       state.currentMarkdown = "";
     }
   }
@@ -943,11 +999,13 @@
     let completed = 0;
     const worker = async () => {
       while (next < images.length) {
+        throwIfImportCancelled();
         const index = next;
         next += 1;
         const segment = images[index];
         showStatus(`Preparing image ${index + 1}/${images.length}...`, "work");
         map.set(segment, await loadImageWithRetry(segment.source, `image-${index + 1}`));
+        throwIfImportCancelled();
         completed += 1;
         showStatus(`Prepared ${completed}/${images.length} image(s)...`, "work");
         await sleep(120);
@@ -981,6 +1039,7 @@
   async function loadImageWithRetry(source, fallbackName, attempts = 4) {
     let last = null;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      throwIfImportCancelled();
       last = await loadImage(source, fallbackName);
       if (last?.ok) return last;
       if (attempt < attempts && isRetryableImageError(last?.error)) {
@@ -998,6 +1057,7 @@
   }
 
   async function loadImage(source, fallbackName) {
+    throwIfImportCancelled();
     if (source.startsWith("data:")) {
       const parsed = shared.parseDataUri(source);
       return parsed.ok
@@ -1017,6 +1077,7 @@
     }
     try {
       const result = await safeRuntimeSendMessage({ type: "xposter:fetch-image", url: source });
+      throwIfImportCancelled();
       if (!result?.ok) {
         return {
           ok: false,
@@ -1046,8 +1107,11 @@
     await Promise.all(
       tables.map(async (segment, index) => {
         try {
+          throwIfImportCancelled();
           map.set(segment, await shared.renderTableImage(segment, `table-${index + 1}.png`));
+          throwIfImportCancelled();
         } catch (error) {
+          if (error?.cancelled) throw error;
           map.set(segment, { ok: false, error: error?.message || String(error) });
         }
       })
@@ -2979,6 +3043,10 @@
     if (message?.type === "xposter:import-markdown") {
       importMarkdown(message.markdown || "", "sidepanel", message.options || {}).then(sendResponse);
       return true;
+    }
+    if (message?.type === "xposter:cancel-import") {
+      sendResponse(cancelActiveImport());
+      return false;
     }
     if (message?.type === "xposter:analyze-markdown") {
       try {
