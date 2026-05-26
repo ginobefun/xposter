@@ -79,7 +79,6 @@
     loadFile: document.getElementById("loadFile"),
     loadSmoke: document.getElementById("loadSmoke"),
     pickVault: document.getElementById("pickVault"),
-    pickVaultSettings: document.getElementById("pickVaultSettings"),
     clearVault: document.getElementById("clearVault"),
     clearVaultSettings: document.getElementById("clearVaultSettings"),
     vaultState: document.getElementById("vaultState"),
@@ -347,6 +346,7 @@ console.log("示例代码块");
   let successConfetti = null;
   let lastSuccessFeedbackKey = "";
   let runSummaryCollapseTimer = null;
+  let draftDropStatusTimer = null;
   let remoteImageAccessStatus = { origins: [], available: [], missing: [], checkedAt: null };
   let remoteImageProbeStatus = { state: "idle", total: 0, ok: 0, fail: 0, results: [], checkedAt: null };
 
@@ -1413,6 +1413,12 @@ console.log("示例代码块");
       "Not configured": "未配置",
       "Choose from an active X page": "从活动 X 页面选择",
       "Choose from an active X page when Markdown uses relative image paths.": "当 Markdown 使用相对图片路径时，请从活动 X 页面选择文件夹。",
+      "xPoster will ask when a Markdown draft uses local image paths.": "当 Markdown 草稿使用本地图片路径时，xPoster 会再提示选择文件夹。",
+      "When a draft uses relative image paths, choose the folder that contains them.": "当草稿使用相对图片路径时，请选择包含这些路径的文件夹。",
+      "No folder connected. xPoster will ask when a draft needs local images.": "尚未连接文件夹。草稿需要本地图片时，xPoster 会再提示。",
+      "Local image folder needed": "需要本地图片文件夹",
+      "Local image path blocked": "本地图片路径已阻止",
+      "Choose the local image folder before writing.": "写入前请先选择本地图片文件夹。",
       Choose: "选择",
       Clear: "清除",
       "Last import": "上次导入",
@@ -2330,6 +2336,9 @@ console.log("示例代码块");
       [/^(\d+) special content block\(s\) will be placed in X\.$/, "$1 个特殊内容块会放入 X。"],
       [/^(\d+) local image\(s\) can resolve through (.+)\.$/, "$1 张本地图片可通过 $2 读取。"],
       [/^(\d+) local image\(s\) need a readable folder\.$/, "$1 张本地图片需要选择可读取文件夹。"],
+      [/^(\d+) local image\(s\) need a readable folder\. Choose the folder that contains their relative paths\.$/, "$1 张本地图片需要可读取文件夹。请选择包含这些相对路径的文件夹。"],
+      [/^(\d+) local image path\(s\) require a readable folder\.$/, "$1 个本地图片路径需要可读取文件夹。"],
+      [/^(\d+) absolute local image path\(s\) found\. Use paths relative to the selected folder\.$/, "发现 $1 个绝对本地图片路径。请改用相对于所选文件夹的路径。"],
       [/^(\d+) remote image\(s\) need source-site permission before upload\.$/, "$1 张网页图片会在写入时尝试处理。"],
       [/^(\d+) remote image\(s\) need Chrome site access before upload\.$/, "$1 张网页图片会在写入时尝试处理。"],
       [/^(\d+) remote image\(s\) from (\d+) site\(s\) need permission before upload\.$/, "$1 张网页图片来自 $2 个站点，写入时会尝试处理。"],
@@ -2684,6 +2693,41 @@ console.log("示例代码块");
     return (parsed?.segments || []).filter((segment) => segment.type === "image" && shared.isLocalImageSource(segment.source));
   }
 
+  function localImageReferences(parsed = latestParsed) {
+    const references = localImageSegments(parsed).map((segment) => ({
+      role: "body",
+      source: segment.source,
+      segment
+    }));
+    const coverSource = importOptions.setCover === false ? "" : String(parsed?.cover || "").trim();
+    if (
+      coverSource &&
+      shared.isLocalImageSource(coverSource) &&
+      !references.some((item) => shared.imageSourcesMatch(item.source, coverSource))
+    ) {
+      references.push({
+        role: "cover",
+        source: coverSource,
+        segment: { type: "image", source: coverSource, alt: "cover" }
+      });
+    }
+    return references;
+  }
+
+  function localImageFolderStatus(parsed = latestParsed, vault = currentVault()) {
+    const references = localImageReferences(parsed);
+    const absoluteCount = references.filter((item) => shared.isAbsoluteLocalImageSource(item.source)).length;
+    const folderReady = Boolean(vault?.configured && vault.permission === "granted");
+    return {
+      references,
+      count: references.length,
+      absoluteCount,
+      needsFolder: Boolean(references.length && !absoluteCount && !folderReady),
+      ready: !references.length || Boolean(!absoluteCount && folderReady),
+      vault: vault || {}
+    };
+  }
+
   function remoteHttpImageSegments(parsed = latestParsed) {
     const seen = new Set();
     return remoteHttpImageSegmentsIncludingCover(parsed).filter((segment) => {
@@ -2949,7 +2993,7 @@ console.log("示例代码块");
     const parsed = latestParsed || ensureLatestParsedFromDraft();
     const counts = latestCounts || shared.segmentCounts(parsed?.segments || []);
     const remoteImages = remoteHttpImageSegments(parsed);
-    const localImages = parsed?.segments?.filter((segment) => segment.type === "image" && shared.isLocalImageSource(segment.source)).length || 0;
+    const localImages = localImageReferences(parsed).length;
     const fingerprint = draftFingerprint(markdown);
     const now = new Date().toISOString();
     return {
@@ -3407,6 +3451,15 @@ console.log("示例代码块");
     persistDraftQueue();
     renderDraftQueue();
     updateWriteButton();
+  }
+
+  function resetQueueItemWritingState(queueItemId) {
+    if (!queueItemId) return;
+    draftQueue = draftQueue.map((item) =>
+      item.id === queueItemId && item.status === "writing" ? { ...item, status: "queued" } : item
+    );
+    persistDraftQueue();
+    renderDraftQueue();
   }
 
   function updateQueueItemMarkdown(id, markdown) {
@@ -3919,9 +3972,9 @@ console.log("示例代码块");
     const empty = !parsed?.segments?.length;
     const metadataOptions = importOptionsPayload();
     const imageSegments = parsed?.segments?.filter((segment) => segment.type === "image") || [];
-    const localImages = imageSegments.filter((segment) => shared.isLocalImageSource(segment.source));
+    const localImages = localImageReferences(parsed);
     const remoteImages = imageSegments.filter((segment) => isRemoteHttpImageSource(segment.source));
-    const absoluteLocalImages = localImages.filter((segment) => shared.isAbsoluteLocalImageSource(segment.source));
+    const absoluteLocalImages = localImages.filter((item) => shared.isAbsoluteLocalImageSource(item.source));
     const coverInBody = Boolean(parsed?.cover && imageSegments.some((segment) => segment.source === parsed.cover));
     const status = latestPageStatus || {};
     const main = latestDiagnostics?.main || {};
@@ -4086,9 +4139,9 @@ console.log("示例代码块");
     const notes = [];
     const metadataOptions = importOptionsPayload();
     const imageSegments = parsed.segments.filter((segment) => segment.type === "image");
-    const localImages = imageSegments.filter((segment) => shared.isLocalImageSource(segment.source));
+    const localImages = localImageReferences(parsed);
     const remoteImages = imageSegments.filter((segment) => isRemoteHttpImageSource(segment.source));
-    const absoluteLocalImages = localImages.filter((segment) => shared.isAbsoluteLocalImageSource(segment.source));
+    const absoluteLocalImages = localImages.filter((item) => shared.isAbsoluteLocalImageSource(item.source));
     const uploadCount = (counts.image || 0) + (counts.table || 0);
 
     if (!metadataOptions.setTitle) notes.push({ tone: "idle", text: "Title setting is off; headings stay in the article body." });
@@ -4272,7 +4325,7 @@ console.log("示例代码块");
     const atomic = plan.plan.filter((item) => item.op.type === "atomic").length;
     const images = plan.plan.filter((item) => item.op.type === "image").length;
     const textBlocks = parsed.segments.filter((segment) => segment.type === "text").length;
-    const local = parsed.segments.filter((segment) => segment.type === "image" && shared.isLocalImageSource(segment.source)).length;
+    const local = localImageReferences(parsed).length;
     els.planReadiness.innerHTML = [
       `<span>Text blocks ${textBlocks}</span>`,
       `<span>Special blocks ${atomic}</span>`,
@@ -4322,6 +4375,12 @@ console.log("示例代码块");
       item.dataset.tone = check.tone;
       item.querySelector("strong").textContent = check.label;
       item.querySelector("div > span").textContent = check.detail;
+      const actionButton = item.querySelector("button[data-preflight-action]");
+      if (actionButton) {
+        actionButton.hidden = !check.action;
+        actionButton.dataset.preflightAction = check.action || "";
+        setLocalizedText(actionButton, check.button || "Choose");
+      }
     }
     const gate = getImportGate(checks);
     const nextAction = buildNextAction(checks, gate);
@@ -4365,6 +4424,10 @@ console.log("示例代码块");
     await primeSuccessAudio();
     const checks = buildPreflightChecks();
     const gate = getImportGate(checks);
+    const localAssetBlocker = localAssetWriteBlocker(checks);
+    if (localAssetBlocker) {
+      return handleLocalAssetWriteBlocker(localAssetBlocker, { chooseWhenAvailable: true });
+    }
     const action = primaryImportAction(gate);
     if (action.action === "import") return importDraft();
     if (action.action === "batch") return importDraftQueue();
@@ -4510,9 +4573,7 @@ console.log("示例代码块");
     const counts = latestCounts || shared.segmentCounts([]);
     const needsBridge = (counts.code || 0) + (counts.divider || 0) + (counts.tweet || 0) > 0;
     const needsUploads = (counts.image || 0) + (counts.table || 0) > 0;
-    const needsAssets = latestParsed
-      ? latestParsed.segments.some((segment) => segment.type === "image" && shared.isLocalImageSource(segment.source))
-      : false;
+    const needsAssets = Boolean(localImageFolderStatus().count);
     const liveResult = buildLiveResultEvidence();
 
     if (byId.get("draft")?.tone !== "ok") {
@@ -4872,7 +4933,11 @@ console.log("示例代码块");
       assets: { action: "chooseVault", button: "Choose" },
       plan: { action: "preview", button: "Preview" }
     };
-    const command = actions[check.id] || {};
+    const command = check.action
+      ? { action: check.action, button: check.button || actions[check.id]?.button || "Fix" }
+      : check.id === "assets"
+        ? {}
+        : actions[check.id] || {};
     return {
       tone: check.tone,
       source: check.label,
@@ -5168,9 +5233,6 @@ console.log("示例代码块");
     const specialBlocks = (counts.code || 0) + (counts.divider || 0) + (counts.tweet || 0);
     const images = counts.image || 0;
     const tables = counts.table || 0;
-    const localImages = parsed
-      ? parsed.segments.filter((segment) => segment.type === "image" && shared.isLocalImageSource(segment.source)).length
-      : 0;
     const remoteImageList = parsed ? remoteHttpImageSegments(parsed) : [];
     const remoteImages = remoteImageList.length;
     const remoteOrigins = remoteImageOrigins(parsed);
@@ -5185,6 +5247,14 @@ console.log("示例代码块");
     const contentVersion = latestDiagnostics?.contentScriptVersion || status.contentScriptVersion || CONTENT_VERSION_UNKNOWN;
     const contentVersionReady = !status.isArticleRoute || contentVersion === EXTENSION_VERSION;
     const originalImporter = originalImporterResidueStatus();
+    const localImages = localImageFolderStatus(parsed, vault);
+    const localImageDetail = localImages.absoluteCount
+      ? `${localImages.absoluteCount} absolute local image path(s) found. Use paths relative to the selected folder.`
+      : localImages.count
+        ? localImages.ready
+          ? `${localImages.count} local image(s) can resolve through ${vault.name || "selected folder"}.`
+          : `${localImages.count} local image(s) need a readable folder. Choose the folder that contains their relative paths.`
+        : "No local image paths detected.";
 
     return [
       {
@@ -5263,12 +5333,10 @@ console.log("示例代码块");
       {
         id: "assets",
         label: "Local images",
-        tone: localImages ? (vault.configured && vault.permission === "granted" ? "ok" : "warn") : "ok",
-        detail: localImages
-          ? vault.configured && vault.permission === "granted"
-            ? `${localImages} local image(s) can resolve through ${vault.name || "selected folder"}.`
-            : `${localImages} local image(s) need a readable folder.`
-          : "No local image paths detected."
+        tone: localImages.absoluteCount ? "error" : localImages.needsFolder ? "warn" : "ok",
+        detail: localImageDetail,
+        action: localImages.needsFolder ? "chooseVault" : "",
+        button: "Choose"
       },
       {
         id: "remote-images",
@@ -5372,7 +5440,7 @@ console.log("示例代码块");
         markers: operations.length,
         atomic: operations.filter((item) => item.type === "atomic").length,
         images: operations.filter((item) => item.type === "image").length,
-        localImages: parsed.segments.filter((segment) => segment.type === "image" && shared.isLocalImageSource(segment.source)).length
+        localImages: localImageReferences(parsed).length
       }
     };
   }
@@ -5387,11 +5455,11 @@ console.log("示例代码块");
           titleFromMeta: Boolean(latestParsed.titleFromMeta),
           counts: latestCounts,
           blocks: latestParsed.segments.length,
-          localImages: latestParsed.segments
-            .filter((segment) => segment.type === "image" && shared.isLocalImageSource(segment.source))
-            .map((segment) => ({
-              source: segment.source,
-              absolute: shared.isAbsoluteLocalImageSource(segment.source)
+          localImages: localImageReferences(latestParsed)
+            .map((item) => ({
+              source: item.source,
+              role: item.role,
+              absolute: shared.isAbsoluteLocalImageSource(item.source)
             })),
           remoteImages: {
             count: remoteHttpImageSegments(latestParsed).length,
@@ -5447,13 +5515,38 @@ console.log("示例代码块");
     return ["import", "batch"].includes(primaryImportAction(gate).action);
   }
 
+  function localAssetWriteBlocker(checks = buildPreflightChecks()) {
+    const assets = checks.find((check) => check.id === "assets");
+    if (!assets || assets.tone === "ok") return null;
+    const localImages = localImageFolderStatus();
+    if (!localImages.count) return null;
+    return {
+      tone: assets.tone,
+      title: localImages.absoluteCount ? "Local image path blocked" : "Local image folder needed",
+      detail: assets.detail,
+      action: assets.action || ""
+    };
+  }
+
+  async function handleLocalAssetWriteBlocker(blocker, { chooseWhenAvailable = false, queueItemId = null } = {}) {
+    log(blocker.detail || "Choose the local image folder before writing.");
+    setDraftDropStatus(blocker.title, blocker.detail || "Choose the local image folder before writing.", "error");
+    openDetailsFor(els.preflightPanel);
+    scrollTargetIntoView(els.preflightPanel, "center");
+    updateWriteButton();
+    activeWriteQueueItemId = null;
+    if (queueItemId) resetQueueItemWritingState(queueItemId);
+    if (chooseWhenAvailable && blocker.action === "chooseVault") {
+      await chooseVault();
+    }
+    return { ok: false, error: blocker.detail, localAssets: true };
+  }
+
   function getImportGate(checks) {
     const byId = new Map(checks.map((check) => [check.id, check]));
     const requiresBridge = (latestCounts.code || 0) + (latestCounts.divider || 0) + (latestCounts.tweet || 0) > 0;
     const requiresUploads = (latestCounts.image || 0) + (latestCounts.table || 0) > 0;
-    const requiresAssets = latestParsed
-      ? latestParsed.segments.some((segment) => segment.type === "image" && shared.isLocalImageSource(segment.source))
-      : false;
+    const requiresAssets = Boolean(localImageFolderStatus().count);
     const blockers = [
       byId.get("draft")?.tone !== "ok" && "Add a Markdown draft first.",
       byId.get("target")?.tone !== "ok" && "Open or create an X Article draft.",
@@ -5471,6 +5564,7 @@ console.log("示例代码块");
       byId.get("draft")?.tone !== "ok" ||
       byId.get("page-script")?.tone === "error" ||
       byId.get("target-lock")?.tone === "error" ||
+      byId.get("assets")?.tone === "error" ||
       byId.get("plan")?.tone !== "ok"
         ? "error"
         : "warn";
@@ -5500,10 +5594,12 @@ console.log("示例代码块");
 
   function setDraftDropStatus(title, detail, tone = "idle") {
     if (!els.draftDropStatus) return;
+    window.clearTimeout(draftDropStatusTimer);
+    draftDropStatusTimer = null;
     els.draftDropStatus.dataset.tone = tone;
     els.draftDropStatus.hidden = false;
     els.draftDropStatus.setAttribute("role", tone === "error" ? "alert" : "status");
-    if (els.draftDropDismiss) els.draftDropDismiss.hidden = tone !== "error";
+    if (els.draftDropDismiss) els.draftDropDismiss.hidden = tone !== "done" && tone !== "error";
     const titleNode = els.draftDropStatus.querySelector("strong");
     const detailNode = els.draftDropStatus.querySelector("span");
     if (titleNode) {
@@ -5515,6 +5611,12 @@ console.log("示例代码块");
       detailNode.textContent = detail;
     }
     translateDynamicDom(els.draftDropStatus);
+    if (tone !== "error" && tone !== "idle") {
+      draftDropStatusTimer = window.setTimeout(() => {
+        draftDropStatusTimer = null;
+        dismissDraftDropStatus();
+      }, 3400);
+    }
   }
 
   function setCompactImportStatus(summary = null) {
@@ -5527,6 +5629,8 @@ console.log("示例代码块");
 
   function dismissDraftDropStatus() {
     if (!els.draftDropStatus) return;
+    window.clearTimeout(draftDropStatusTimer);
+    draftDropStatusTimer = null;
     els.draftDropStatus.hidden = true;
     els.draftDropStatus.dataset.tone = "idle";
     if (els.draftDropDismiss) els.draftDropDismiss.hidden = true;
@@ -6027,7 +6131,7 @@ console.log("示例代码块");
     const diagnosticsFailed = targetOk && ["bridge", "uploads", "editor"].some((id) => byId.get(id)?.tone === "error");
     const mediaFailed = latestEvidence?.result?.summary?.images?.fail || latestProgress?.summary?.images?.fail || 0;
     const atomicFailed = latestEvidence?.result?.summary?.main?.atomicFail || latestProgress?.summary?.main?.atomicFail || 0;
-    const localAssetsPending = byId.get("assets")?.tone === "warn";
+    const localAssetsPending = byId.get("assets")?.tone === "warn" && byId.get("assets")?.action;
     if (importFailed) {
       items.push({
         tone: "error",
@@ -6063,7 +6167,9 @@ console.log("示例代码块");
             ? "openArticles"
             : byId.get("page-script")?.tone !== "ok"
               ? "refreshXTab"
-            : "check",
+            : byId.get("assets")?.action
+              ? byId.get("assets").action
+              : "check",
         button:
           byId.get("draft")?.tone !== "ok"
             ? "Add Markdown"
@@ -6071,6 +6177,8 @@ console.log("示例代码块");
               ? "Open"
             : byId.get("page-script")?.tone !== "ok"
               ? "Refresh X"
+            : byId.get("assets")?.action
+              ? byId.get("assets").button || "Choose"
             : "Check X"
       });
     } else if (!hasImportEvidence) {
@@ -6371,6 +6479,11 @@ console.log("示例代码块");
       renderDraftQueue();
     }
     const parsed = ensureLatestParsedFromDraft();
+    updatePreflight();
+    const localAssetBlocker = localAssetWriteBlocker(buildPreflightChecks());
+    if (localAssetBlocker) {
+      return handleLocalAssetWriteBlocker(localAssetBlocker, { queueItemId });
+    }
     const remoteImages = remoteHttpImageSegments(parsed);
     if (remoteImages.length) {
       const permission = await requestRemoteImageAccess(parsed);
@@ -6396,11 +6509,7 @@ console.log("示例代码块");
       recordLiveProgressEvent("preflight-blocked", { text: message, error: message, level: "warn", mediaLimit: true });
       updateWriteButton();
       activeWriteQueueItemId = null;
-      if (queueItemId) {
-        draftQueue = draftQueue.map((item) => item.id === queueItemId && item.status === "writing" ? { ...item, status: "queued" } : item);
-        persistDraftQueue();
-        renderDraftQueue();
-      }
+      resetQueueItemWritingState(queueItemId);
       return { ok: false, error: message, mediaLimit: true };
     }
     const target = await prepareSimpleWriteTarget(parsed);
@@ -6415,11 +6524,7 @@ console.log("示例代码块");
       recordLiveProgressEvent("error", { error: target.reason || "Could not prepare X Article." });
       updateWriteButton();
       activeWriteQueueItemId = null;
-      if (queueItemId) {
-        draftQueue = draftQueue.map((item) => item.id === queueItemId && item.status === "writing" ? { ...item, status: "queued" } : item);
-        persistDraftQueue();
-        renderDraftQueue();
-      }
+      resetQueueItemWritingState(queueItemId);
       return { ok: false, error: target.reason || "Could not prepare X Article." };
     }
     if (importCancelRequested) {
@@ -6429,11 +6534,7 @@ console.log("示例代码块");
       updateWriteButton();
       updateLiveProgress();
       activeWriteQueueItemId = null;
-      if (queueItemId) {
-        draftQueue = draftQueue.map((item) => item.id === queueItemId && item.status === "writing" ? { ...item, status: "queued" } : item);
-        persistDraftQueue();
-        renderDraftQueue();
-      }
+      resetQueueItemWritingState(queueItemId);
       return { ok: false, error: "Writing stopped by user.", cancelled: true };
     }
     if (queueItemId) {
@@ -6461,11 +6562,7 @@ console.log("示例代码块");
       }
       captureEvidence("import-error", { result: response, targetContext: target.targetContext, pageStatus: latestPageStatus, diagnostics: latestDiagnostics });
       activeWriteQueueItemId = null;
-      if (queueItemId) {
-        draftQueue = draftQueue.map((item) => item.id === queueItemId && item.status === "writing" ? { ...item, status: "queued" } : item);
-        persistDraftQueue();
-        renderDraftQueue();
-      }
+      resetQueueItemWritingState(queueItemId);
     }
     updatePreflight();
     updateWriteButton();
@@ -6914,6 +7011,7 @@ console.log("示例代码块");
     if (response?.ok) {
       log(`Local image folder set: ${response.name}.`);
       await refreshPageState();
+      updatePreflight();
       return;
     }
     if (response?.skipped) log("Local image folder selection skipped.");
@@ -7032,7 +7130,7 @@ console.log("示例代码块");
   async function restoreVaultState() {
     els.vaultState.textContent = "Choose from an active X page";
     els.vaultDetail.textContent = "Choose from an active X page when Markdown uses relative image paths.";
-    els.vaultSettingsText.textContent = "Choose from an active X tab so browser permissions are attached to the page.";
+    els.vaultSettingsText.textContent = "xPoster will ask when a Markdown draft uses local image paths.";
     setVaultClearEnabled(false);
   }
 
@@ -7044,8 +7142,8 @@ console.log("示例代码块");
     }
     if (!vault.configured) {
       els.vaultState.textContent = "Not configured";
-      els.vaultDetail.textContent = "Relative image paths will be skipped until a local image folder is selected.";
-      els.vaultSettingsText.textContent = "No local image folder is configured.";
+      els.vaultDetail.textContent = "When a draft uses relative image paths, choose the folder that contains them.";
+      els.vaultSettingsText.textContent = "No folder connected. xPoster will ask when a draft needs local images.";
       setVaultClearEnabled(false);
       translateDynamicDom(document.querySelector(".vault"));
       return;
@@ -7060,8 +7158,8 @@ console.log("示例代码块");
   }
 
   function setVaultClearEnabled(enabled) {
-    els.clearVault.disabled = !enabled;
-    els.clearVaultSettings.disabled = !enabled;
+    if (els.clearVault) els.clearVault.disabled = !enabled;
+    if (els.clearVaultSettings) els.clearVaultSettings.disabled = !enabled;
   }
 
   async function runPreflight() {
@@ -8341,6 +8439,9 @@ console.log("示例代码块");
       case "check":
         await runPreflight();
         break;
+      case "chooseVault":
+        await chooseVault();
+        break;
       case "import":
         await importDraft();
         break;
@@ -8413,7 +8514,6 @@ console.log("示例代码块");
   els.draftDropDismiss?.addEventListener("click", dismissDraftDropStatus);
   els.loadSmoke?.addEventListener("click", loadSmokeFixture);
   els.pickVault.addEventListener("click", chooseVault);
-  els.pickVaultSettings.addEventListener("click", chooseVault);
   els.clearVault.addEventListener("click", clearVault);
   els.clearVaultSettings.addEventListener("click", clearVault);
   els.copyEvidence.addEventListener("click", copyEvidence);
@@ -8504,6 +8604,11 @@ console.log("示例代码块");
     const button = event.target.closest("button[data-issue-action]");
     if (!button) return;
     await runRunbookAction(button.dataset.issueAction);
+  });
+  els.preflightList?.addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-preflight-action]");
+    if (!button) return;
+    await runRunbookAction(button.dataset.preflightAction);
   });
   els.recoveryList?.addEventListener("click", async (event) => {
     const button = event.target.closest("button[data-recovery-action]");

@@ -736,6 +736,7 @@
                   <strong>Local images</strong>
                   <span>Local image folder is optional.</span>
                 </div>
+                <button class="secondary compact preflight-action" type="button" data-preflight-action="chooseVault" hidden data-i18n="Choose">Choose</button>
               </li>
               <li data-check="remote-images" data-tone="idle">
                 <span class="check-mark" aria-hidden="true"></span>
@@ -849,7 +850,7 @@
 
       <section class="settings panel" data-panel="settings">
         <h2 data-i18n="Settings">Settings</h2>
-        <div class="setting-row">
+        <div class="setting-row setting-row-language">
           <div>
             <strong data-i18n="Language">Language</strong>
             <span data-i18n="Choose the side panel language.">Choose the side panel language.</span>
@@ -886,10 +887,9 @@
         <div class="setting-row">
           <div>
             <strong data-i18n="Local image folder">Local image folder</strong>
-            <span id="vaultSettingsText">Choose the folder that contains relative image paths in your Markdown.</span>
+            <span id="vaultSettingsText">xPoster will ask when a Markdown draft uses local image paths.</span>
           </div>
           <div class="button-cluster">
-            <button class="secondary compact" id="pickVaultSettings" data-i18n="Choose">Choose</button>
             <button class="secondary compact danger" id="clearVaultSettings" disabled data-i18n="Clear">Clear</button>
           </div>
         </div>

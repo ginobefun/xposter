@@ -71,6 +71,8 @@
     "Release here to link local images for this article.": "在这里松开，为这篇文章关联本地图片。",
     "Add image to article": "添加图片到文章",
     "Release over the editor to upload through X.": "在编辑器上松开，通过 X 上传。",
+    "Insert image at cursor": "在光标处插入图片",
+    "Hold Option/Alt and release over the article body.": "按住 Option/Alt，并在正文区域松开。",
     "Write Markdown here": "在这里写入 Markdown",
     "Release over the editor to write into this article.": "在编辑器上松开，即可写入这篇文章。",
     "Adding drafts...": "正在添加草稿...",
@@ -82,6 +84,8 @@
     "Checking local image access.": "正在检查本地图片访问权限。",
     "Adding image...": "正在添加图片...",
     "Handing the image to X's uploader.": "正在交给 X 上传图片。",
+    "Using the current article cursor.": "将使用当前正文光标位置。",
+    "Place the cursor in the article body before dropping an image.": "先把光标放到正文中，再拖入图片。",
     "Reading Markdown...": "正在读取 Markdown...",
     "Preparing the article body.": "正在准备文章正文。",
     "Downloading dropped image...": "正在下载拖入的图片...",
@@ -1732,6 +1736,13 @@
     }
   }
 
+  function articleBodyHasFocus() {
+    const editor = findEditor();
+    const active = document.activeElement;
+    if (!editor || !active) return false;
+    return active === editor || editor.contains(active);
+  }
+
   async function uploadDroppedImages(files) {
     if (!files.length) return { ok: false, error: "No image file found" };
     const payloads = await Promise.all(files.map(imageFilePayload));
@@ -2641,6 +2652,10 @@
         return;
       }
       if (imageFiles.length) {
+        if (!articleBodyHasFocus()) {
+          showStatus("Place the cursor in the article body before dropping an image.", "warn", 5200);
+          return;
+        }
         await uploadDroppedImages(imageFiles);
         return;
       }
@@ -2649,6 +2664,10 @@
         return;
       }
       if (imageUrl) {
+        if (!articleBodyHasFocus()) {
+          showStatus("Place the cursor in the article body before dropping an image.", "warn", 5200);
+          return;
+        }
         await uploadDroppedImageUrl(imageUrl);
         return;
       }
@@ -2681,9 +2700,10 @@
     const sidePanelIntent = sidePanelMarkdownDropIntent(dataTransfer);
     if (sidePanelIntent === "sidepanel-queue") return sidePanelIntent;
     if (isSingleMarkdownDrop(dataTransfer)) return "article";
-    if (canDropIntoCurrentArticle(event) && isXposterDropCandidate(dataTransfer)) return "article";
+    if (canDropIntoCurrentArticle(event) && isExplicitImageInsertDrop(dataTransfer, event)) return "article";
+    if (canDropIntoCurrentArticle(event) && isXposterDefaultDropCandidate(dataTransfer)) return "article";
     if (sidePanelIntent) return sidePanelIntent;
-    if (isEditorRoute() && findEditor() && isXposterDropCandidate(dataTransfer)) return "article-outside";
+    if (isEditorRoute() && findEditor() && isXposterDefaultDropCandidate(dataTransfer)) return "article-outside";
     return "none";
   }
 
@@ -2745,17 +2765,31 @@
     return Boolean(file?.name && /\.(md|markdown|mdown|mkd|txt)$/i.test(file.name));
   }
 
-  function isXposterDropCandidate(dataTransfer) {
+  function isXposterDefaultDropCandidate(dataTransfer) {
     if (hasMarkdownText(dataTransfer)) return true;
     const types = Array.from(dataTransfer?.types || []);
-    if (types.includes("text/plain") || types.includes("text/markdown")) return true;
-    if (transferMayContainImageUrl(dataTransfer)) return true;
+    if (types.includes("text/markdown")) return true;
     if (!hasFiles(dataTransfer)) return false;
     const files = Array.from(dataTransfer.files || []);
     if (files.some(isMarkdownFile)) return true;
-    if (files.some(isImageFile)) return true;
     const items = Array.from(dataTransfer.items || []);
-    return items.some(isLikelyMarkdownTransferItem) || items.some(isLikelyImageTransferItem) || items.some(isDirectoryTransferItem);
+    return items.some(isLikelyMarkdownTransferItem) || items.some(isDirectoryTransferItem);
+  }
+
+  function isExplicitImageInsertDrop(dataTransfer, event = null) {
+    if (!event?.altKey) return false;
+    if (!isEditorRoute() || !findEditor()) return false;
+    if (!isDropEventOverSurface(event, "article")) return false;
+    if (!articleBodyHasFocus()) return false;
+    return hasImageDropPayload(dataTransfer);
+  }
+
+  function hasImageDropPayload(dataTransfer) {
+    if (!dataTransfer) return false;
+    if (imageFilesFromTransfer(dataTransfer).length) return true;
+    const items = Array.from(dataTransfer.items || []);
+    if (items.some(isLikelyImageTransferItem)) return true;
+    return Boolean(imageUrlFromTransfer(dataTransfer));
   }
 
   function isLikelyMarkdownTransferItem(item) {
@@ -2861,7 +2895,7 @@
       case "folder":
         return { title: "Connect image folder", detail: "Release here to link local images for this article." };
       case "image":
-        return { title: "Add image to article", detail: "Release over the editor to upload through X." };
+        return { title: "Insert image at cursor", detail: "Hold Option/Alt and release over the article body." };
       default:
         return { title: "Write Markdown here", detail: "Release over the editor to write into this article." };
     }
@@ -2880,7 +2914,7 @@
       case "folder":
         return { title: "Connecting folder...", detail: "Checking local image access." };
       case "image":
-        return { title: "Adding image...", detail: "Handing the image to X's uploader." };
+        return { title: "Adding image...", detail: "Using the current article cursor." };
       default:
         return { title: "Reading Markdown...", detail: "Preparing the article body." };
     }

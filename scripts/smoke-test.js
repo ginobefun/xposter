@@ -189,7 +189,7 @@ assert.ok(
 );
 assert.ok(
   contentScriptText.includes("uploadDroppedImageUrl"),
-  "content script should upload dropped web image URLs instead of only showing a drop hint"
+  "content script should keep the explicit image insertion path available"
 );
 assert.ok(
   contentScriptText.includes('data-slot="image"'),
@@ -207,8 +207,25 @@ assert.ok(
     contentScriptText.includes("function isDropEventOverSurface(event, intent") &&
     contentScriptText.includes("function dropIntentForTransfer") &&
     contentScriptText.includes("function sidePanelMarkdownDropIntent") &&
+    contentScriptText.includes("function isExplicitImageInsertDrop") &&
+    contentScriptText.includes("function hasImageDropPayload") &&
+    contentScriptText.includes("function articleBodyHasFocus") &&
     contentScriptText.includes('event.dataTransfer.dropEffect = intent === "article-outside" ? "none" : "copy"'),
   "X page drag feedback should use a stable editor-area mask with processing feedback"
+);
+assert.ok(
+  contentScriptText.includes("if (!event?.altKey) return false;") &&
+    contentScriptText.includes("if (canDropIntoCurrentArticle(event) && isExplicitImageInsertDrop(dataTransfer, event)) return \"article\";") &&
+    contentScriptText.includes("if (!articleBodyHasFocus()) return false;") &&
+    contentScriptText.includes("if (canDropIntoCurrentArticle(event) && isXposterDefaultDropCandidate(dataTransfer)) return \"article\";") &&
+    contentScriptText.includes("if (isEditorRoute() && findEditor() && isXposterDefaultDropCandidate(dataTransfer)) return \"article-outside\";") &&
+    contentScriptText.includes("function isXposterDefaultDropCandidate") &&
+    !contentScriptText.includes('if (types.includes("text/plain") || types.includes("text/markdown")) return true;') &&
+    !contentScriptText.includes("function isXposterDropCandidate") &&
+    !contentScriptText.includes("if (files.some(isImageFile)) return true;") &&
+    !contentScriptText.includes("return items.some(isLikelyMarkdownTransferItem) || items.some(isLikelyImageTransferItem) || items.some(isDirectoryTransferItem);") &&
+    contentScriptText.includes("Place the cursor in the article body before dropping an image."),
+  "plain image drops should pass through to X native cover/media areas; xPoster image insertion must be explicit and cursor-based"
 );
 assert.ok(
   contentScriptText.includes('if (sidePanelIntent === "sidepanel-queue") return sidePanelIntent;') &&
@@ -360,6 +377,23 @@ assert.ok(
     sidepanelText.includes("Split the draft") &&
     sidepanelText.includes("remove images"),
   "draft preflight should show gentle media capacity before X rejects Article media beyond the verified 25-image Article limit"
+);
+assert.ok(
+  sidepanelHtml.includes('class="secondary compact preflight-action"') &&
+    sidepanelHtml.includes('data-preflight-action="chooseVault"') &&
+    !sidepanelHtml.includes('id="pickVaultSettings"') &&
+    sidepanelHtml.includes("xPoster will ask when a Markdown draft uses local image paths.") &&
+    sidepanelText.includes("function localImageReferences") &&
+    sidepanelText.includes("function localImageFolderStatus") &&
+    sidepanelText.includes("function localAssetWriteBlocker") &&
+    sidepanelText.includes("handleLocalAssetWriteBlocker(localAssetBlocker") &&
+    sidepanelText.includes('button[data-preflight-action]') &&
+    sidepanelText.includes("Choose the folder that contains their relative paths.") &&
+    sidepanelText.includes("Local image path blocked") &&
+    sidepanelText.includes("No folder connected. xPoster will ask when a draft needs local images.") &&
+    sidepanelCss.includes("grid-template-columns: 18px minmax(0, 1fr) auto;") &&
+    sidepanelCss.includes(".preflight-action[hidden]"),
+  "local image folder access should stay contextual: settings only shows status, preflight shows the action, and writes block before unresolved local assets start"
 );
 assert.ok(
   contentScriptText.includes("[/^Uploading image (\\d+)\\/(\\d+)\\.\\.\\.$/, \"正在上传图片 $1/$2...\"]") &&

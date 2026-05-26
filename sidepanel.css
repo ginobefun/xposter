@@ -1060,17 +1060,27 @@ h2 {
 }
 
 .drop-status {
-  grid-row: 2;
+  position: fixed;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(14px, env(safe-area-inset-bottom));
+  left: auto;
+  z-index: 80;
+  width: min(300px, calc(100vw - 32px));
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: baseline;
-  justify-content: stretch;
-  gap: 5px;
-  min-height: 26px;
-  padding: 0 12px 7px;
-  border-bottom: 1px solid color-mix(in oklch, var(--line), transparent 45%);
-  background: var(--paper);
-  color: var(--muted);
+  grid-template-columns: 3px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "rail title close"
+    "rail detail close";
+  align-items: center;
+  gap: 2px 10px;
+  min-height: 44px;
+  padding: 10px;
+  border: 1px solid color-mix(in oklch, var(--line), transparent 12%);
+  background: color-mix(in oklch, var(--paper), var(--paper-2) 8%);
+  color: var(--ink);
+  box-shadow: 0 14px 34px color-mix(in oklch, var(--ink), transparent 90%);
+  transform-origin: 100% 100%;
+  animation: xposter-toast-enter var(--motion-medium) var(--ease-out-quint) both;
   transition:
     background-color var(--motion-medium) ease,
     color var(--motion-medium) ease,
@@ -1079,65 +1089,76 @@ h2 {
     transform var(--motion-quick) var(--ease-out-quart);
 }
 
-.drop-status[data-tone="ready"],
-.drop-status[data-tone="done"],
-.drop-status[data-tone="error"] {
-  animation: xposter-status-snap var(--motion-medium) var(--ease-out-quint) both;
+.drop-status[data-tone="idle"] {
+  display: none;
+}
+
+.drop-status::before {
+  content: "";
+  grid-area: rail;
+  width: 3px;
+  height: 100%;
+  min-height: 24px;
+  background: color-mix(in oklch, var(--signal), var(--muted) 42%);
 }
 
 .drop-status strong {
+  grid-area: title;
   color: inherit;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 840;
   line-height: 1.2;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .drop-status strong::after {
-  content: "·";
-  margin-left: 5px;
-  color: color-mix(in oklch, currentColor, transparent 34%);
+  content: "";
+  margin-left: 0;
 }
 
 .drop-status span {
+  grid-area: detail;
+  display: -webkit-box;
   min-width: 0;
-  color: inherit;
-  font-size: 10.5px;
-  line-height: 1.32;
+  color: color-mix(in oklch, var(--muted), var(--ink) 5%);
+  font-size: 11px;
+  line-height: 1.34;
   text-align: left;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
 }
 
 .drop-status[data-tone="ready"] {
-  background: var(--paper);
   color: var(--signal-text);
-  box-shadow: none;
+}
+
+.drop-status[data-tone="ready"]::before {
+  background: color-mix(in oklch, var(--signal), var(--muted) 38%);
 }
 
 .drop-status[data-tone="done"] {
-  background: var(--paper);
   color: var(--ok);
-  box-shadow: none;
+  animation:
+    xposter-toast-enter var(--motion-medium) var(--ease-out-quint) both,
+    xposter-toast-breathe 1600ms var(--ease-out-quart) 260ms 2;
+}
+
+.drop-status[data-tone="done"]::before {
+  background: color-mix(in oklch, var(--ok), var(--muted) 36%);
 }
 
 .drop-status[data-tone="error"] {
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 3px 10px;
-  align-items: center;
-  margin: 0 12px 10px;
-  padding: 10px 10px 10px 12px;
   border: 1px solid color-mix(in oklch, var(--danger), var(--line) 58%);
-  border-left-width: 3px;
   background: color-mix(in oklch, var(--danger), var(--paper) 94%);
   color: var(--danger);
-  box-shadow: none;
 }
 
-.drop-status[data-tone="error"] strong,
-.drop-status[data-tone="error"] span {
-  grid-column: 1;
+.drop-status[data-tone="error"]::before {
+  background: color-mix(in oklch, var(--danger), var(--muted) 34%);
 }
 
 .drop-status[data-tone="error"] strong {
@@ -1151,18 +1172,13 @@ h2 {
 }
 
 .drop-status[data-tone="error"] span {
-  margin-top: 1px;
   color: color-mix(in oklch, var(--danger), var(--muted) 42%);
   font-size: 11px;
   line-height: 1.35;
-  overflow: visible;
-  text-overflow: clip;
-  white-space: normal;
 }
 
 .drop-status-dismiss {
-  grid-column: 2;
-  grid-row: 1 / 3;
+  grid-area: close;
   align-self: start;
   width: 28px;
   height: 28px;
@@ -1170,17 +1186,19 @@ h2 {
   place-items: center;
   border: 1px solid transparent;
   background: transparent;
-  color: color-mix(in oklch, var(--danger), var(--ink) 16%);
+  color: color-mix(in oklch, var(--muted), var(--ink) 24%);
   cursor: pointer;
   transition:
     background-color var(--motion-quick) ease,
     border-color var(--motion-quick) ease,
+    color var(--motion-quick) ease,
     transform var(--motion-quick) var(--ease-out-quart);
 }
 
 .drop-status-dismiss:hover {
-  border-color: color-mix(in oklch, var(--danger), var(--line) 60%);
-  background: color-mix(in oklch, var(--danger), var(--paper) 88%);
+  border-color: color-mix(in oklch, var(--line), var(--ink) 14%);
+  background: color-mix(in oklch, var(--paper-2), var(--paper) 52%);
+  color: var(--ink);
 }
 
 .drop-status-dismiss:active {
@@ -1193,8 +1211,14 @@ h2 {
   fill: currentColor;
 }
 
-.composer[data-empty-draft="true"] .drop-status[data-tone="idle"] {
-  display: none;
+.drop-status[data-tone="error"] .drop-status-dismiss {
+  color: color-mix(in oklch, var(--danger), var(--ink) 16%);
+}
+
+.drop-status[data-tone="error"] .drop-status-dismiss:hover {
+  border-color: color-mix(in oklch, var(--danger), var(--line) 60%);
+  background: color-mix(in oklch, var(--danger), var(--paper) 88%);
+  color: var(--danger);
 }
 
 :root[data-theme="dark"] .drop-status,
@@ -2770,6 +2794,27 @@ textarea:focus-visible,
   }
 }
 
+@keyframes xposter-toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes xposter-toast-breathe {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-1px) scale(1.012);
+  }
+}
+
 @keyframes xposter-drop-field-in {
   from {
     opacity: 0;
@@ -3056,7 +3101,8 @@ textarea:focus-visible,
 .preflight-list li {
   min-width: 0;
   display: grid;
-  grid-template-columns: 18px 1fr;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: start;
   gap: 9px;
   padding: 10px 0;
   border-bottom: 1px solid color-mix(in oklch, var(--line), transparent 30%);
@@ -3125,6 +3171,15 @@ textarea:focus-visible,
 
 .preflight-list li[data-tone="error"] strong {
   color: var(--danger);
+}
+
+.preflight-action {
+  align-self: center;
+  justify-self: end;
+}
+
+.preflight-action[hidden] {
+  display: none;
 }
 
 .actions {
@@ -4484,6 +4539,15 @@ textarea:focus-visible,
   min-width: 126px;
 }
 
+.setting-row-language {
+  align-items: center;
+  flex-direction: row;
+}
+
+.setting-row-language > div {
+  min-width: 0;
+}
+
 .theme-control {
   flex: 0 0 auto;
   position: relative;
@@ -4551,13 +4615,14 @@ textarea:focus-visible,
 }
 
 .setting-checks label {
+  position: relative;
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: 9px;
-  align-items: start;
-  padding: 9px 10px;
-  border: 1px solid var(--line);
-  background: color-mix(in oklch, var(--paper-2), var(--paper) 48%);
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 11px;
+  border: 1px solid color-mix(in oklch, var(--line), transparent 16%);
+  background: color-mix(in oklch, var(--paper-2), var(--paper) 62%);
   cursor: pointer;
   transition:
     border-color var(--motion-quick) ease,
@@ -4566,17 +4631,17 @@ textarea:focus-visible,
 }
 
 .setting-checks label:hover {
-  border-color: color-mix(in oklch, var(--signal), var(--line) 65%);
-  background: var(--paper);
+  border-color: color-mix(in oklch, var(--line), var(--ink) 12%);
+  background: color-mix(in oklch, var(--paper), var(--paper-2) 16%);
 }
 
 .setting-checks label:has(input:checked) {
-  border-color: color-mix(in oklch, var(--signal), var(--line) 48%);
-  background: color-mix(in oklch, var(--signal), var(--paper) 94%);
+  border-color: color-mix(in oklch, var(--line), var(--ink) 16%);
+  background: color-mix(in oklch, var(--paper), var(--paper-2) 20%);
 }
 
 .setting-checks label:has(input:checked) strong {
-  color: var(--signal-text);
+  color: var(--ink);
 }
 
 .setting-checks label:active {
@@ -4584,10 +4649,50 @@ textarea:focus-visible,
 }
 
 .setting-checks input {
-  width: 16px;
-  height: 16px;
-  margin: 2px 0 0;
-  accent-color: var(--signal);
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  align-self: center;
+  border: 1px solid color-mix(in oklch, var(--line), var(--ink) 20%);
+  background: var(--paper);
+  display: grid;
+  place-items: center;
+  transition:
+    background-color var(--motion-quick) ease,
+    border-color var(--motion-quick) ease,
+    box-shadow var(--motion-quick) ease;
+}
+
+.setting-checks input::before {
+  content: "";
+  width: 7px;
+  height: 4px;
+  border-left: 1.7px solid transparent;
+  border-bottom: 1.7px solid transparent;
+  transform: translateY(-1px) rotate(-45deg) scale(.72);
+  opacity: 0;
+  transition:
+    opacity var(--motion-quick) ease,
+    transform var(--motion-quick) var(--ease-out-quart);
+}
+
+.setting-checks input:checked {
+  border-color: color-mix(in oklch, var(--ink), var(--line) 34%);
+  background: color-mix(in oklch, var(--ink), var(--paper) 86%);
+  color: var(--ink);
+}
+
+.setting-checks input:checked::before {
+  border-color: currentColor;
+  opacity: 1;
+  transform: translateY(-1px) rotate(-45deg) scale(1);
+}
+
+.setting-checks input:focus-visible {
+  outline: 1px solid color-mix(in oklch, var(--line), var(--ink) 30%);
+  outline-offset: 2px;
 }
 
 .setting-checks span,
@@ -4835,13 +4940,12 @@ textarea:focus-visible,
   }
 
   .drop-status {
-    grid-template-columns: 1fr;
+    grid-template-columns: 3px minmax(0, 1fr) auto;
     align-items: start;
-    gap: 3px;
-  }
-
-  .drop-status[data-tone="error"] {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "rail title close"
+      "rail detail close";
+    gap: 3px 8px;
   }
 
   .setting-subcontrols {
@@ -4898,6 +5002,21 @@ textarea:focus-visible,
     flex-direction: column;
   }
 
+  .setting-row-language {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .setting-row-language .language-control {
+    flex: 0 0 auto;
+  }
+
+  .setting-row-language .language-control select {
+    width: auto;
+    min-width: 112px;
+    max-width: 132px;
+  }
+
   .theme-control {
     width: 100%;
   }
@@ -4918,8 +5037,12 @@ textarea:focus-visible,
     justify-content: stretch;
   }
 
+  .preflight-action {
+    min-height: 34px;
+  }
+
   .record-actions {
-    align-items: flex-end;
+    align-items: center;
   }
 
   .record-action-icons {
