@@ -90,8 +90,9 @@ const failedRemoteImageMap = new Map(
 const remoteFallbackPlan = shared.buildPastePlan(remoteImageParsed.segments, failedRemoteImageMap);
 const mediaLimitDraft = (count) =>
   Array.from({ length: count }, (_, index) => `![image ${index + 1}](https://images.example.test/${index + 1}.png)`).join("\n\n");
-const mediaNearLimitParsed = shared.parseMarkdown(mediaLimitDraft(19));
-const mediaAtLimitParsed = shared.parseMarkdown(mediaLimitDraft(20));
+const mediaNearLimitParsed = shared.parseMarkdown(mediaLimitDraft(21));
+const mediaAtLimitParsed = shared.parseMarkdown(mediaLimitDraft(25));
+const mediaOverLimitParsed = shared.parseMarkdown(mediaLimitDraft(26));
 const frontmatterOnlyCoverDraft = [
   "---",
   "title: Cover only",
@@ -144,7 +145,8 @@ const statusSandbox = {
 const mediaSandbox = {
   shared: { imageSourcesMatch: shared.imageSourcesMatch },
   nearParsed: mediaNearLimitParsed,
-  atParsed: mediaAtLimitParsed
+  atParsed: mediaAtLimitParsed,
+  overParsed: mediaOverLimitParsed
 };
 
 assert.ok(statusHelperStart >= 0 && statusHelperEnd > statusHelperStart, "status helper functions should be present");
@@ -171,16 +173,18 @@ vm.runInNewContext(
   statusSandbox
 );
 vm.runInNewContext(
-  `const X_ARTICLE_MEDIA_SOFT_LIMIT = 20;
-   const X_ARTICLE_MEDIA_HEADROOM_THRESHOLD = 16;
+  `const X_ARTICLE_MEDIA_SOFT_LIMIT = 25;
+   const X_ARTICLE_MEDIA_HEADROOM_THRESHOLD = 21;
    const importOptions = {};
    ${contentScriptText.slice(contentMediaHelperStart, contentMediaHelperEnd)}
    const contentNear = articleMediaUploadEstimate(nearParsed);
    const contentAt = articleMediaUploadEstimate(atParsed);
+   const contentOver = articleMediaUploadEstimate(overParsed);
    ${sidepanelText.slice(sidepanelMediaHelperStart, sidepanelMediaHelperEnd)}
    const sidepanelNear = mediaUploadEstimate(nearParsed);
    const sidepanelAt = mediaUploadEstimate(atParsed);
-   this.mediaEstimates = { contentNear, contentAt, sidepanelNear, sidepanelAt };`,
+   const sidepanelOver = mediaUploadEstimate(overParsed);
+   this.mediaEstimates = { contentNear, contentAt, contentOver, sidepanelNear, sidepanelAt, sidepanelOver };`,
   mediaSandbox
 );
 
@@ -438,17 +442,23 @@ assert.ok(
   "article writes should expose a stop control that cancels the page upload loop"
 );
 assert.ok(
-  sidepanelText.includes("const X_ARTICLE_MEDIA_SOFT_LIMIT = 20") &&
-    contentScriptText.includes("const X_ARTICLE_MEDIA_SOFT_LIMIT = 20") &&
+  sidepanelText.includes("const X_ARTICLE_MEDIA_SOFT_LIMIT = 25") &&
+    contentScriptText.includes("const X_ARTICLE_MEDIA_SOFT_LIMIT = 25") &&
     contentScriptText.includes("function preflightArticleMediaLimit") &&
     contentScriptText.includes("function articleMediaUploadEstimate") &&
     contentScriptText.includes('type: "preflight-blocked"') &&
     contentScriptText.includes("mediaLimitWarningText") &&
     contentScriptText.includes("mediaHeadroomText") &&
-    sidepanelText.includes("const X_ARTICLE_MEDIA_HEADROOM_THRESHOLD = 16") &&
+    sidepanelText.includes("const X_ARTICLE_MEDIA_HEADROOM_THRESHOLD = 21") &&
     sidepanelText.includes("X_ARTICLE_MEDIA_LIMIT_WARNING") &&
     sidepanelText.includes("X_ARTICLE_MEDIA_HEADROOM_NOTE") &&
     sidepanelText.includes("X_ARTICLE_MEDIA_CAPACITY_NOTE") &&
+    sidepanelHtml.includes('id="draftMediaAlert"') &&
+    sidepanelCss.includes(".draft-media-alert") &&
+    sidepanelText.includes("function syncDraftMediaAlert") &&
+    sidepanelText.includes("els.draftMediaAlertDetail.__xposterSourceText = X_ARTICLE_MEDIA_LIMIT_WARNING") &&
+    sidepanelText.includes('text: "Fix the image count in the editor."') &&
+    sidepanelText.includes('text: mediaEstimate.nearSoftLimit ? "Close to the image limit." : "Ready to write."') &&
     sidepanelText.includes("function mediaUploadEstimate") &&
     sidepanelText.includes("mediaLimitWarningText") &&
     sidepanelText.includes("mediaHeadroomText") &&
@@ -456,10 +466,11 @@ assert.ok(
     sidepanelText.includes("nearSoftLimit") &&
     sidepanelText.includes('recordLiveProgressEvent("preflight-blocked"') &&
     sidepanelText.includes("X Article media note") &&
-    sidepanelText.includes("Image plan: {count}/20") &&
-    sidepanelText.includes("Split the draft") &&
-    sidepanelText.includes("remove images"),
-  "draft preflight should show gentle media capacity before X rejects Article media beyond the verified 20-image Article limit"
+    sidepanelText.includes("Images: {count}/{limit}") &&
+    sidepanelText.includes("Remove {extra} image(s)") &&
+    !sidepanelText.includes("Image plan: {count}/20") &&
+    !contentScriptText.includes("Image plan: {count}/20"),
+  "draft preflight should allow up to 25 media uploads and show a centered editor warning only above that limit"
 );
 assert.deepEqual(
   {
@@ -473,6 +484,11 @@ assert.deepEqual(
       nearSoftLimit: mediaSandbox.mediaEstimates.contentAt.nearSoftLimit,
       overSoftLimit: mediaSandbox.mediaEstimates.contentAt.overSoftLimit
     },
+    contentOver: {
+      total: mediaSandbox.mediaEstimates.contentOver.total,
+      nearSoftLimit: mediaSandbox.mediaEstimates.contentOver.nearSoftLimit,
+      overSoftLimit: mediaSandbox.mediaEstimates.contentOver.overSoftLimit
+    },
     sidepanelNear: {
       total: mediaSandbox.mediaEstimates.sidepanelNear.total,
       nearSoftLimit: mediaSandbox.mediaEstimates.sidepanelNear.nearSoftLimit,
@@ -482,15 +498,22 @@ assert.deepEqual(
       total: mediaSandbox.mediaEstimates.sidepanelAt.total,
       nearSoftLimit: mediaSandbox.mediaEstimates.sidepanelAt.nearSoftLimit,
       overSoftLimit: mediaSandbox.mediaEstimates.sidepanelAt.overSoftLimit
+    },
+    sidepanelOver: {
+      total: mediaSandbox.mediaEstimates.sidepanelOver.total,
+      nearSoftLimit: mediaSandbox.mediaEstimates.sidepanelOver.nearSoftLimit,
+      overSoftLimit: mediaSandbox.mediaEstimates.sidepanelOver.overSoftLimit
     }
   },
   {
-    contentNear: { total: 19, nearSoftLimit: true, overSoftLimit: false },
-    contentAt: { total: 20, nearSoftLimit: false, overSoftLimit: true },
-    sidepanelNear: { total: 19, nearSoftLimit: true, overSoftLimit: false },
-    sidepanelAt: { total: 20, nearSoftLimit: false, overSoftLimit: true }
+    contentNear: { total: 21, nearSoftLimit: true, overSoftLimit: false },
+    contentAt: { total: 25, nearSoftLimit: true, overSoftLimit: false },
+    contentOver: { total: 26, nearSoftLimit: false, overSoftLimit: true },
+    sidepanelNear: { total: 21, nearSoftLimit: true, overSoftLimit: false },
+    sidepanelAt: { total: 25, nearSoftLimit: true, overSoftLimit: false },
+    sidepanelOver: { total: 26, nearSoftLimit: false, overSoftLimit: true }
   },
-  "20 planned media uploads should block before X reaches its late-upload failure zone"
+  "25 planned media uploads should be allowed; 26 should block before writing"
 );
 assert.ok(
   sidepanelHtml.includes('class="secondary compact preflight-action"') &&
@@ -535,6 +558,14 @@ assert.ok(
 assert.ok(
   !sidepanelText.includes('record-icon-action is-disabled'),
   "record history should not render a disabled open-link action when no URL is saved"
+);
+assert.ok(
+  sidepanelCss.includes(".record-history-item:hover .record-title strong") &&
+    sidepanelCss.includes(".record-history-item:focus-visible .record-title strong") &&
+    sidepanelCss.includes("color: var(--signal-text);") &&
+    sidepanelCss.includes(':root[data-theme="dark"] .record-history-item:hover .record-title strong') &&
+    sidepanelCss.includes("color: var(--signal);"),
+  "record titles should turn blue on hover and keyboard focus for clearer item affordance"
 );
 assert.ok(
   sidepanelText.includes('class="record-file-name"'),
@@ -640,6 +671,27 @@ assert.ok(
   contentScriptText.includes("message.options || {}"),
   "content script should apply title and cover options sent by the side panel"
 );
+{
+  const titleBeforeBody =
+    mainWorldText.indexOf("await applyTitleMetadata(payload.title, articleId, summary);") <
+    mainWorldText.indexOf('progress("Pasting structured Markdown...")');
+  const coverBeforeMediaReorder =
+    mainWorldText.indexOf("await applyCoverMetadata(payload.cover, articleId, upload, summary);") <
+    mainWorldText.indexOf('progress("Reordering uploaded media...")');
+  const timelineMetadataFirst =
+    sidepanelHtml.indexOf('data-timeline-step="metadata"') < sidepanelHtml.indexOf('data-timeline-step="media"') &&
+    sidepanelHtml.indexOf('data-timeline-step="metadata"') < sidepanelHtml.indexOf('data-timeline-step="paste"');
+  assert.ok(
+    titleBeforeBody &&
+      coverBeforeMediaReorder &&
+      timelineMetadataFirst &&
+      mainWorldText.includes("function orderImageOperationsForMetadata") &&
+      sidepanelText.includes("Title is set first; the cover image uploads before matching body images when possible.") &&
+      sidepanelText.includes("Setting article title and preparing cover before body import.") &&
+      !sidepanelText.includes("Setting the title and cover after the body import."),
+    "article import should establish title first, prioritize cover upload, and present metadata before body writing"
+  );
+}
 assert.ok(
   sidepanelHtml.includes("https://github.com/nevertoday/xposter"),
   "settings should link to the GitHub project page"
@@ -675,14 +727,22 @@ assert.ok(
   "drop activation should not depend on fragile child-element drag depth"
 );
 assert.ok(
+  sidepanelCss.includes("padding-right: max(14px, env(safe-area-inset-right));") &&
+    sidepanelCss.includes("padding-left: max(14px, env(safe-area-inset-left));") &&
+    sidepanelCss.includes(".record-edit-dialog textarea") &&
+    sidepanelCss.includes("padding: 15px 16px;") &&
+    !sidepanelCss.includes(".record-edit-sheet {\n    padding: 0;"),
+  "record edit dialog should keep side breathing room and comfortable textarea padding on narrow screens"
+);
+assert.ok(
   sidepanelHtml.includes('id="confettiOption"') &&
     sidepanelHtml.includes('id="successSoundOption"') &&
     sidepanelHtml.includes('id="successSoundStyle"') &&
-    sidepanelHtml.includes('id="successSoundVolume"') &&
-    sidepanelHtml.includes('id="successSoundVolumeValue"') &&
-    sidepanelHtml.includes('value="75"') &&
+    !sidepanelHtml.includes('id="successSoundVolume"') &&
+    !sidepanelHtml.includes('id="successSoundVolumeValue"') &&
+    !sidepanelHtml.includes('data-i18n="Volume"') &&
     !sidepanelHtml.includes('id="testSuccessFeedback"'),
-  "settings should expose confetti, sound, sound style, and volume without a feedback test control"
+  "settings should expose confetti, sound, and sound style without volume or a feedback test control"
 );
 assert.ok(
   sidepanelText.includes("triggerSuccessFeedback(response.summary)") &&
@@ -718,13 +778,16 @@ assert.ok(
   sidepanelText.includes("AudioContext") &&
     sidepanelText.includes("createOscillator") &&
     sidepanelText.includes("SUCCESS_SOUND_STYLES") &&
-    sidepanelText.includes("SUCCESS_SOUND_DEFAULT_VOLUME") &&
+    sidepanelText.includes("SUCCESS_SOUND_VOLUME = 1") &&
     sidepanelText.includes("successSoundNotes") &&
     sidepanelText.includes("async function primeSuccessAudio()") &&
+    sidepanelText.includes("async function previewSuccessFeedback()") &&
     sidepanelText.includes("await primeSuccessAudio();") &&
-    sidepanelText.includes("successSoundVolumeValue") &&
+    sidepanelText.includes("previewSuccessFeedback()") &&
+    !sidepanelText.includes("successSoundVolume") &&
+    !sidepanelText.includes("successSoundVolumeValue") &&
     !sidepanelText.includes("Sound blocked"),
-  "completion sound should use audible local Web Audio, unlock on write action, and keep settings free of test-only playback UI"
+  "completion sound should use audible local Web Audio at fixed full volume, preview style changes, unlock on write action, and keep settings free of test-only playback UI"
 );
 assert.ok(
   backgroundText.includes("REMOTE_IMAGE_RETRY_DELAYS_MS = [0, 700, 1800]") &&

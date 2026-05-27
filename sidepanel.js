@@ -54,6 +54,9 @@
     importHint: document.getElementById("importHint"),
     draftBrief: document.getElementById("draftBrief"),
     draftRecognized: document.getElementById("draftRecognized"),
+    draftMediaAlert: document.getElementById("draftMediaAlert"),
+    draftMediaAlertTitle: document.getElementById("draftMediaAlertTitle"),
+    draftMediaAlertDetail: document.getElementById("draftMediaAlertDetail"),
     loadFile: document.getElementById("loadFile"),
     pickVault: document.getElementById("pickVault"),
     clearVault: document.getElementById("clearVault"),
@@ -129,8 +132,6 @@
     confettiOption: document.getElementById("confettiOption"),
     successSoundOption: document.getElementById("successSoundOption"),
     successSoundStyle: document.getElementById("successSoundStyle"),
-    successSoundVolume: document.getElementById("successSoundVolume"),
-    successSoundVolumeValue: document.getElementById("successSoundVolumeValue"),
     activityPanel: document.getElementById("activityPanel")
   };
 
@@ -148,14 +149,14 @@
   const MAX_DRAFT_QUEUE_STORAGE_BYTES = 4 * 1024 * 1024;
   const MAX_DRAFT_QUEUE_ITEM_BYTES = 512 * 1024;
   const MAX_RECORD_MARKDOWN_CHARS = 120000;
-  const X_ARTICLE_MEDIA_SOFT_LIMIT = 20;
-  const X_ARTICLE_MEDIA_HEADROOM_THRESHOLD = 16;
+  const X_ARTICLE_MEDIA_SOFT_LIMIT = 25;
+  const X_ARTICLE_MEDIA_HEADROOM_THRESHOLD = 21;
   const X_ARTICLE_MEDIA_LIMIT_WARNING =
-    "Image plan: {count}/20, at or above xPoster's verified X Article safe limit. Split the draft or remove images before writing to avoid a late X rejection.";
+    "Images: {count}/{limit}. Remove {extra} image(s) before writing.";
   const X_ARTICLE_MEDIA_HEADROOM_NOTE =
-    "Image plan: {count}/20. You are close to the verified X Article safe limit; split the draft before adding many more images.";
+    "Images: {count}/{limit}. Close to X Article's image limit.";
   const X_ARTICLE_MEDIA_CAPACITY_NOTE =
-    "Image plan: {count}/20.";
+    "Images: {count}/{limit}.";
   const MARKDOWN_FILE_RE = /\.(md|markdown|mdown|mkd|txt)$/i;
   const MARKDOWN_FILE_ACCEPT = ".md,.markdown,.mdown,.mkd,.txt,text/markdown,text/plain";
   const MARKDOWN_TRANSFER_MIME_RE = /^(text\/markdown|text\/plain|application\/octet-stream)$/i;
@@ -166,7 +167,7 @@
   const DRAFT_ANALYZE_DELAY_MS = 140;
   const RECORD_SEARCH_DELAY_MS = 120;
   const THEME_MODES = new Set(["system", "light", "dark"]);
-  const SUCCESS_SOUND_DEFAULT_VOLUME = 0.75;
+  const SUCCESS_SOUND_VOLUME = 1;
   const SUCCESS_SOUND_PRESETS = {
     soft: {
       master: 0.18,
@@ -229,7 +230,7 @@
   let batchWriting = false;
   let importCancelRequested = false;
   let importOptions = { setTitle: true, setCover: true };
-  let successFeedbackOptions = { confetti: true, sound: true, soundStyle: "soft", volume: SUCCESS_SOUND_DEFAULT_VOLUME };
+  let successFeedbackOptions = { confetti: true, sound: true, soundStyle: "soft" };
   let articleExportOptions = { enabled: true, mode: "copy" };
   let successAudioContext = null;
   let successConfetti = null;
@@ -308,9 +309,12 @@
       "Could not save the Markdown queue in browser storage.": "无法把 Markdown 队列保存到浏览器存储。",
       "Loaded dragged Markdown.": "已载入拖入的 Markdown。",
       "{count} new draft(s) added. {total} total in queue.": "新增 {count} 篇草稿，队列现在有 {total} 篇。",
-      [X_ARTICLE_MEDIA_LIMIT_WARNING]: "图片容量：{count}/20，已达到或超过 xPoster 实测安全上限。建议先拆成多篇或减少图片，避免写到最后被 X 拒绝。",
-      [X_ARTICLE_MEDIA_HEADROOM_NOTE]: "图片容量：{count}/20。已经接近 X 文章实测安全上限，继续加图前建议先考虑拆篇。",
-      [X_ARTICLE_MEDIA_CAPACITY_NOTE]: "图片容量：{count}/20。",
+      "Fix the image count in the editor.": "请在编辑框里调整图片数量。",
+      "Close to the image limit.": "已接近图片上限。",
+      [X_ARTICLE_MEDIA_LIMIT_WARNING]: "图片：{count}/{limit}。请先删掉 {extra} 张图再写入。",
+      [X_ARTICLE_MEDIA_HEADROOM_NOTE]: "图片：{count}/{limit}。已接近 X 文章图片上限。",
+      [X_ARTICLE_MEDIA_CAPACITY_NOTE]: "图片：{count}/{limit}。",
+      "Too many images": "图片过多",
       "X Article media note": "X 文章媒体提醒",
       "Review before writing": "写入前确认",
       "Focus the Markdown editor below.": "光标已放到下面的 Markdown 编辑框。",
@@ -472,7 +476,8 @@
       "Preparing Markdown, images, and the X editor.": "正在准备 Markdown、图片和 X 编辑器。",
       "Writing the article body into X.": "正在把文章正文写入 X。",
       "Placing images, tweets, code, and dividers into the article.": "正在放置图片、推文、代码和分隔线。",
-      "Setting the title and cover after the body import.": "正文导入后正在设置标题和封面。",
+      "Setting the title and cover before the body import.": "先设置标题和封面，再写入正文。",
+      "Setting article title and preparing cover before body import.": "先设置文章标题，并优先准备封面。",
       "Live status received from the active X tab.": "已收到当前 X 标签页的实时状态。",
       "Writing finished.": "写入完成。",
       "Writing failed": "写入失败",
@@ -638,7 +643,6 @@
       "Soft chime": "轻柔提示",
       "Warm bell": "温和铃声",
       "Light pop": "轻快弹响",
-      "Volume": "音量",
       "Project and author": "项目与作者",
       "Open the project page or follow updates from the author.": "打开项目页面，或关注作者更新。",
       "Open GitHub project": "打开 GitHub 项目",
@@ -829,9 +833,12 @@
       "Writing stopped by user.": "写入已停止。",
       Stopped: "已停止",
       "Stop request failed: active X tab did not respond": "停止请求失败：当前 X 标签页没有响应",
-      [X_ARTICLE_MEDIA_LIMIT_WARNING]: "图片容量：{count}/20，已达到或超过 xPoster 实测安全上限。建议先拆成多篇或减少图片，避免写到最后被 X 拒绝。",
-      [X_ARTICLE_MEDIA_HEADROOM_NOTE]: "图片容量：{count}/20。已经接近 X 文章实测安全上限，继续加图前建议先考虑拆篇。",
-      [X_ARTICLE_MEDIA_CAPACITY_NOTE]: "图片容量：{count}/20。",
+      "Fix the image count in the editor.": "请在编辑框里调整图片数量。",
+      "Close to the image limit.": "已接近图片上限。",
+      [X_ARTICLE_MEDIA_LIMIT_WARNING]: "图片：{count}/{limit}。请先删掉 {extra} 张图再写入。",
+      [X_ARTICLE_MEDIA_HEADROOM_NOTE]: "图片：{count}/{limit}。已接近 X 文章图片上限。",
+      [X_ARTICLE_MEDIA_CAPACITY_NOTE]: "图片：{count}/{limit}。",
+      "Too many images": "图片过多",
       "X Article media note": "X 文章媒体提醒",
       "Review before writing": "写入前确认",
       "Focus the Markdown editor below.": "光标已放到下面的 Markdown 编辑框。",
@@ -1126,6 +1133,7 @@
       "Waiting for frontmatter or first H1.": "等待 frontmatter 或第一个 H1。",
       "Waiting for frontmatter cover or first image.": "等待 frontmatter cover 或第一张图片。",
       "Headings, paragraphs, lists, quotes, links, and inline styles.": "标题、段落、列表、引用、链接和行内样式。",
+      "Will write the body after title and cover setup starts.": "会在标题和封面开始处理后写入正文。",
       "Prepared as files, then uploaded through X.": "准备为文件，然后通过 X 上传。",
       "Rendered as images before upload.": "上传前渲染为图片。",
       "Inserted as X tweet atomic blocks.": "作为 X 推文嵌入插入。",
@@ -1210,9 +1218,11 @@
       "Waiting for a draft.": "等待草稿。",
       "Prepare media": "准备媒体",
       "Images and tables will be prepared after parsing.": "图片和表格会在解析后准备。",
+      "Title and cover will be prepared first when available.": "有标题和封面时会优先准备。",
       "Paste HTML": "写入正文",
       "Write article body": "写入正文",
       "The generated HTML body is not ready yet.": "生成的 HTML 正文尚未准备好。",
+      "The article body is not ready yet.": "正文尚未准备好。",
       "Replace markers": "放置特殊内容",
       "Place special content": "放置特殊内容",
       "Place embeds and code": "放置嵌入和代码",
@@ -1221,10 +1231,11 @@
       "X editor status is unknown.": "X 编辑器状态未知。",
       "Set title and cover": "设置标题和封面",
       "Metadata will be attempted when available.": "可用时会尝试设置标题和封面。",
-      "Title and cover will be added when available.": "有标题和封面时会自动设置。",
       "Title will be applied when X allows it.": "X 允许时会设置标题。",
       "Cover will be applied when X allows it.": "X 允许时会设置封面。",
       "Title and cover will be applied when X allows it.": "X 允许时会设置标题和封面。",
+      "Title and cover are handled before the body when X allows it.": "X 允许时会先处理标题和封面。",
+      "Title is set first; the cover image uploads before matching body images when possible.": "会先设置标题；封面图会尽量优先上传。",
       "No title or cover is available to apply.": "没有可设置的标题或封面。",
       "Capture evidence": "保存记录",
       "Save import record": "保存导入记录",
@@ -1298,9 +1309,12 @@
       "Writing stopped by user.": "写入已停止。",
       Stopped: "已停止",
       "Stop request failed: active X tab did not respond": "停止请求失败：当前 X 标签页没有响应",
-      [X_ARTICLE_MEDIA_LIMIT_WARNING]: "图片容量：{count}/20，已达到或超过 xPoster 实测安全上限。建议先拆成多篇或减少图片，避免写到最后被 X 拒绝。",
-      [X_ARTICLE_MEDIA_HEADROOM_NOTE]: "图片容量：{count}/20。已经接近 X 文章实测安全上限，继续加图前建议先考虑拆篇。",
-      [X_ARTICLE_MEDIA_CAPACITY_NOTE]: "图片容量：{count}/20。",
+      "Fix the image count in the editor.": "请在编辑框里调整图片数量。",
+      "Close to the image limit.": "已接近图片上限。",
+      [X_ARTICLE_MEDIA_LIMIT_WARNING]: "图片：{count}/{limit}。请先删掉 {extra} 张图再写入。",
+      [X_ARTICLE_MEDIA_HEADROOM_NOTE]: "图片：{count}/{limit}。已接近 X 文章图片上限。",
+      [X_ARTICLE_MEDIA_CAPACITY_NOTE]: "图片：{count}/{limit}。",
+      "Too many images": "图片过多",
       "X Article media note": "X 文章媒体提醒",
       "Review before writing": "写入前确认",
       "Focus the Markdown editor below.": "光标已放到下面的 Markdown 编辑框。",
@@ -1555,7 +1569,6 @@
       "Soft chime": "轻柔提示",
       "Warm bell": "温和铃声",
       "Light pop": "轻快弹响",
-      "Volume": "音量",
       "Project and author": "项目与作者",
       "Open the project page or follow updates from the author.": "打开项目页面，或关注作者更新。",
       "Open GitHub project": "打开 GitHub 项目",
@@ -1689,7 +1702,7 @@
       "Writing generated HTML and marker placeholders into X.": "正在把正文写入 X。",
       "Uploading prepared images and rendered tables through X.": "正在通过 X 上传准备好的图片和渲染后的表格。",
       "Replacing marker paragraphs with media and atomic blocks.": "正在把图片、推文和代码放到正确位置。",
-      "Applying article metadata after the body import.": "正文导入后正在设置标题和封面。",
+      "Applying article metadata before the body import.": "正在先设置文章标题和封面。",
       "The import run reported completion.": "导入流程已报告完成。",
       "Live status received from the active X tab.": "已收到当前 X 标签页发来的实时状态。",
       "The active X tab reported a completed import.": "当前 X 标签页报告导入已完成。",
@@ -1927,12 +1940,10 @@
   }
 
   function normalizeSuccessFeedbackOptions(options = {}) {
-    const volume = Number(options.volume);
     return {
       confetti: options.confetti !== false,
       sound: options.sound !== false,
-      soundStyle: SUCCESS_SOUND_STYLES.has(options.soundStyle) ? options.soundStyle : "soft",
-      volume: Number.isFinite(volume) ? Math.min(1, Math.max(0.2, volume)) : SUCCESS_SOUND_DEFAULT_VOLUME
+      soundStyle: SUCCESS_SOUND_STYLES.has(options.soundStyle) ? options.soundStyle : "soft"
     };
   }
 
@@ -1944,12 +1955,8 @@
     if (els.confettiOption) els.confettiOption.checked = successFeedbackOptions.confetti !== false;
     if (els.successSoundOption) els.successSoundOption.checked = successFeedbackOptions.sound !== false;
     if (els.successSoundStyle) els.successSoundStyle.value = successFeedbackOptions.soundStyle || "soft";
-    const volumePercent = Math.round((successFeedbackOptions.volume || SUCCESS_SOUND_DEFAULT_VOLUME) * 100);
-    if (els.successSoundVolume) els.successSoundVolume.value = String(volumePercent);
-    if (els.successSoundVolumeValue) els.successSoundVolumeValue.value = `${volumePercent}%`;
     const soundEnabled = successFeedbackOptions.sound !== false;
     if (els.successSoundStyle) els.successSoundStyle.disabled = !soundEnabled;
-    if (els.successSoundVolume) els.successSoundVolume.disabled = !soundEnabled;
   }
 
   function applySuccessFeedbackOptions(options = successFeedbackOptions) {
@@ -2011,10 +2018,9 @@
     if (context.state === "closed" || context.state === "suspended") return;
     const now = context.currentTime + 0.01;
     const sound = successSoundNotes();
-    const volume = Math.min(1, Math.max(0.2, Number(successFeedbackOptions.volume) || SUCCESS_SOUND_DEFAULT_VOLUME));
     const master = context.createGain();
     master.gain.setValueAtTime(0.0001, now);
-    master.gain.exponentialRampToValueAtTime(sound.master * volume, now + 0.018);
+    master.gain.exponentialRampToValueAtTime(sound.master * SUCCESS_SOUND_VOLUME, now + 0.018);
     const releaseAt = now + Math.max(0.48, ...sound.notes.map((note) => note.start + note.duration + 0.06));
     master.gain.exponentialRampToValueAtTime(0.0001, releaseAt);
     master.connect(context.destination);
@@ -2068,6 +2074,11 @@
     lastSuccessFeedbackKey = key;
     if (successFeedbackOptions.confetti) fireSuccessConfetti();
     if (successFeedbackOptions.sound) void playSuccessSound();
+  }
+
+  async function previewSuccessFeedback() {
+    if (successFeedbackOptions.confetti) fireSuccessConfetti();
+    if (successFeedbackOptions.sound) await playSuccessSound();
   }
 
   function applyTheme(mode = currentThemeMode) {
@@ -2739,15 +2750,27 @@
       tables,
       coverOnly,
       total,
-      nearSoftLimit: total >= X_ARTICLE_MEDIA_HEADROOM_THRESHOLD && total < X_ARTICLE_MEDIA_SOFT_LIMIT,
-      overSoftLimit: total >= X_ARTICLE_MEDIA_SOFT_LIMIT
+      nearSoftLimit: total >= X_ARTICLE_MEDIA_HEADROOM_THRESHOLD && total <= X_ARTICLE_MEDIA_SOFT_LIMIT,
+      overSoftLimit: total > X_ARTICLE_MEDIA_SOFT_LIMIT
+    };
+  }
+
+  function mediaNoteValues(estimate = mediaUploadEstimate()) {
+    const total = Number(estimate?.total || 0);
+    return {
+      count: String(total),
+      limit: String(X_ARTICLE_MEDIA_SOFT_LIMIT),
+      extra: String(Math.max(0, total - X_ARTICLE_MEDIA_SOFT_LIMIT))
     };
   }
 
   function mediaNoteText(template, estimate = mediaUploadEstimate()) {
-    const count = String(estimate.total || 0);
-    if (i18n) return i18n.t(template, { count });
-    return translateText(template).replace("{count}", count);
+    const values = mediaNoteValues(estimate);
+    if (i18n) return i18n.t(template, values);
+    return Object.entries(values).reduce(
+      (text, [key, value]) => text.replaceAll(`{${key}}`, value),
+      translateText(template)
+    );
   }
 
   function mediaLimitWarningText(estimate = mediaUploadEstimate()) {
@@ -2760,6 +2783,22 @@
 
   function mediaCapacityText(estimate = mediaUploadEstimate()) {
     return mediaNoteText(X_ARTICLE_MEDIA_CAPACITY_NOTE, estimate);
+  }
+
+  function syncDraftMediaAlert(estimate = mediaUploadEstimate()) {
+    if (!els.draftMediaAlert) return;
+    const show = Boolean(estimate?.overSoftLimit);
+    els.draftMediaAlert.hidden = !show;
+    if (!show) return;
+    if (els.draftMediaAlertTitle) setLocalizedText(els.draftMediaAlertTitle, "Too many images");
+    if (els.draftMediaAlertDetail) {
+      const values = mediaNoteValues(estimate);
+      delete els.draftMediaAlertDetail.dataset.i18n;
+      els.draftMediaAlertDetail.__xposterSourceText = X_ARTICLE_MEDIA_LIMIT_WARNING;
+      els.draftMediaAlertDetail.textContent = i18n
+        ? i18n.t(X_ARTICLE_MEDIA_LIMIT_WARNING, values)
+        : mediaLimitWarningText(estimate);
+    }
   }
 
   function remoteImagePermissionPattern(origin) {
@@ -3599,6 +3638,7 @@
       updatePreflight();
       updateWriteButton();
       updateProgressiveSections();
+      syncDraftMediaAlert(null);
       if (!queueModeActive()) {
         setDraftDropStatus("Markdown draft", "Paste Markdown here, choose a file, or drop .md files.", "idle");
       }
@@ -3628,6 +3668,7 @@
       updatePreflight();
       updateWriteButton();
       updateProgressiveSections();
+      syncDraftMediaAlert(mediaUploadEstimate(parsed));
       setDraftDropStatus("Markdown loaded", draftReadyDetail(markdown.length, counts), "done");
     } catch (error) {
       log(`Could not analyze draft: ${error?.message || error}`);
@@ -3972,7 +4013,7 @@
         id: "text",
         label: "Text",
         tone: counts.text ? "ok" : "idle",
-        detail: counts.text ? "Will write the article body first." : "No text blocks detected.",
+        detail: counts.text ? "Will write the body after title and cover setup starts." : "No text blocks detected.",
         count: counts.text || 0
       },
       {
@@ -4416,13 +4457,13 @@
     if (mediaEstimate.overSoftLimit) {
       return {
         tone: "warn",
-        text: mediaLimitWarningText(mediaEstimate)
+        text: "Fix the image count in the editor."
       };
     }
     if (mediaEstimate.total) {
       return {
         tone: mediaEstimate.nearSoftLimit ? "warn" : "ready",
-        text: mediaEstimate.nearSoftLimit ? mediaHeadroomText(mediaEstimate) : mediaCapacityText(mediaEstimate)
+        text: mediaEstimate.nearSoftLimit ? "Close to the image limit." : "Ready to write."
       };
     }
     return {
@@ -4438,13 +4479,13 @@
     if (mediaEstimate.overSoftLimit) {
       return {
         tone: "warn",
-        text: mediaLimitWarningText(mediaEstimate)
+        text: "Fix the image count in the editor."
       };
     }
     if (mediaEstimate.nearSoftLimit) {
       return {
         tone: "warn",
-        text: mediaHeadroomText(mediaEstimate)
+        text: "Close to the image limit."
       };
     }
     if (remoteImageProbeStatus.state === "checking") {
@@ -4629,9 +4670,12 @@
     if (metadataOptions.setTitle && latestParsed?.title) metadataParts.push("title");
     if (metadataOptions.setCover && latestParsed?.cover) metadataParts.push("cover");
     const hasMetadata = metadataParts.length > 0;
-    const metadataLabel =
-      metadataParts.length === 2 ? "Title and cover" : metadataParts[0] === "title" ? "Title" : "Cover";
-    const metadataDetail = `${metadataLabel} will be applied when X allows it.`;
+    const metadataDetail =
+      metadataParts.length === 2
+        ? "Title is set first; the cover image uploads before matching body images when possible."
+        : metadataParts[0] === "title"
+          ? "Title will be applied when X allows it."
+          : "Cover will be applied when X allows it.";
     const mediaTone = byId.get("uploads")?.tone || "warn";
     const mediaStatus = toneLabel(byId.get("uploads")?.tone);
     const pasteBlocked = Boolean(
@@ -4650,6 +4694,17 @@
         status: latestParsed?.segments?.length ? "Done" : "Blocked"
       },
       {
+        id: "metadata",
+        label: "Set title and cover",
+        tone: importSucceeded ? "ok" : hasMetadata ? (resolvedGate.ok ? "ready" : "warn") : latestParsed ? "idle" : "idle",
+        detail: hasMetadata
+          ? metadataDetail
+          : latestParsed
+            ? "No title or cover is available to apply."
+            : "Title and cover will be prepared first when available.",
+        status: importSucceeded ? "Done" : hasMetadata ? (resolvedGate.ok ? "Ready" : "Waiting") : latestParsed ? "Skipped" : "Idle"
+      },
+      {
         id: "media",
         label: "Prepare media",
         tone: needsMedia ? mediaTone : latestParsed ? "ok" : "idle",
@@ -4665,7 +4720,7 @@
         label: "Write article body",
         tone: importSucceeded ? "ok" : pasteBlocked ? "error" : resolvedGate.ok ? "ready" : byId.get("plan")?.tone === "ok" ? "warn" : "idle",
         detail: plan.htmlLength
-          ? `${plan.htmlLength} character(s) will be written into the article body first.`
+          ? `${plan.htmlLength} character(s) will be written after title and cover setup starts.`
           : "The article body is not ready yet.",
         status: importSucceeded ? "Done" : resolvedGate.ok ? "Ready" : plan.htmlLength ? "Waiting" : "Idle"
       },
@@ -4685,17 +4740,6 @@
             ? "No embeds, code blocks, dividers, images, or tables need extra placement."
             : "X editor status is unknown.",
         status: importSucceeded ? "Done" : needsBridge ? toneLabel(byId.get("bridge")?.tone) : latestParsed ? "Skipped" : "Idle"
-      },
-      {
-        id: "metadata",
-        label: "Set title and cover",
-        tone: importSucceeded ? "ok" : hasMetadata ? (resolvedGate.ok ? "ready" : "warn") : latestParsed ? "idle" : "idle",
-        detail: hasMetadata
-          ? metadataDetail
-          : latestParsed
-            ? "No title or cover is available to apply."
-            : "Title and cover will be added when available.",
-        status: importSucceeded ? "Done" : hasMetadata ? (resolvedGate.ok ? "Ready" : "Waiting") : latestParsed ? "Skipped" : "Idle"
       },
       {
         id: "evidence",
@@ -5543,10 +5587,10 @@
 
   function progressDetailForStatus(text) {
     if (/prepar|准备/i.test(text)) return localizeText("Preparing Markdown, images, and the X editor.");
+    if (/title|cover|标题|封面/i.test(text)) return localizeText("Setting article title and preparing cover before body import.");
     if (/writing|paste|structured|写入/i.test(text)) return localizeText("Writing the article body into X.");
     if (/upload|上传/i.test(text)) return localizeText("Uploading prepared images and rendered tables through X.");
     if (/reorder|marker|special|insert|放置|清理/i.test(text)) return localizeText("Placing images, tweets, code, and dividers into the article.");
-    if (/title|cover|标题|封面/i.test(text)) return localizeText("Setting the title and cover after the body import.");
     if (/imported|written|complete|完成|已写入/i.test(text)) return localizeText("Writing finished.");
     return text ? localizeText(text) : localizeText("Live status received from the active X tab.");
   }
@@ -5555,11 +5599,12 @@
     if (level === "done") return 100;
     if (level === "error") return 100;
     if (/prepar/i.test(text)) return 14;
+    if (/title/i.test(text)) return 24;
     if (/writing|paste/i.test(text)) return 46;
     if (/special|insert|marker/i.test(text)) return 58;
     if (/upload/i.test(text)) return 70;
     if (/reorder/i.test(text)) return 82;
-    if (/title|cover/i.test(text)) return 90;
+    if (/cover/i.test(text)) return 74;
     if (/cleanup/i.test(text)) return 94;
     return 18;
   }
@@ -8044,21 +8089,15 @@
     setSuccessFeedbackOptions({
       confetti: els.confettiOption?.checked !== false,
       sound: els.successSoundOption?.checked !== false,
-      soundStyle: els.successSoundStyle?.value || "soft",
-      volume: Number(els.successSoundVolume?.value || Math.round(SUCCESS_SOUND_DEFAULT_VOLUME * 100)) / 100
+      soundStyle: els.successSoundStyle?.value || "soft"
     });
   });
   els.successSoundStyle?.addEventListener("change", () => {
-    setSuccessFeedbackOptions({
+    void setSuccessFeedbackOptions({
       ...successFeedbackOptions,
       soundStyle: els.successSoundStyle.value || "soft"
     });
-  });
-  els.successSoundVolume?.addEventListener("input", () => {
-    setSuccessFeedbackOptions({
-      ...successFeedbackOptions,
-      volume: Number(els.successSoundVolume.value || Math.round(SUCCESS_SOUND_DEFAULT_VOLUME * 100)) / 100
-    });
+    void previewSuccessFeedback();
   });
   els.liveRunbookList.addEventListener("click", async (event) => {
     const button = event.target.closest("button[data-runbook-action]");

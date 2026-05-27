@@ -792,6 +792,81 @@
     return { ok: true };
   }
 
+  async function applyTitleMetadata(title, articleId, summary) {
+    if (!title) return false;
+    throwIfCancelled();
+    progress("Setting title...");
+    summary.title.articleId = articleId || summary.title.articleId || null;
+    const result = await setTitleViaUi(title);
+    summary.title.ui = result;
+    if (!result.ok) console.warn(LOG, "title failed", result.error);
+    if (articleId && !summary.title.graphql?.ok) {
+      const graphResult = await updateTitleGraphql(articleId, title).catch((error) => ({
+        ok: false,
+        error: error?.message || String(error)
+      }));
+      summary.title.graphql = graphResult;
+      if (!graphResult.ok) console.warn(LOG, "title GraphQL failed", graphResult);
+    } else if (!articleId) {
+      summary.title.graphql = { ok: false, skipped: true, reason: "No article id in URL" };
+    }
+    return Boolean(result.ok || summary.title.graphql?.ok);
+  }
+
+  async function applyTitleGraphqlMetadata(title, articleId, summary) {
+    if (!title || !articleId || summary.title.graphql?.ok) return false;
+    throwIfCancelled();
+    summary.title.articleId = articleId;
+    const graphResult = await updateTitleGraphql(articleId, title).catch((error) => ({
+      ok: false,
+      error: error?.message || String(error)
+    }));
+    summary.title.graphql = graphResult;
+    if (!graphResult.ok) console.warn(LOG, "title GraphQL failed", graphResult);
+    return Boolean(graphResult.ok);
+  }
+
+  function imageOperationMatchesSource(operation, source) {
+    return Boolean(source && operation?.op?.source && imageSourcesMatch(operation.op.source, source));
+  }
+
+  function coverPriorityForImageOperation(operation, coverSource) {
+    if (!coverSource) return 0;
+    if (operation?.op?.coverOnly) return 2;
+    return imageOperationMatchesSource(operation, coverSource) ? 1 : 0;
+  }
+
+  function orderImageOperationsForMetadata(imageOperations, coverSource) {
+    return imageOperations
+      .map((operation, index) => ({ operation, index, priority: coverPriorityForImageOperation(operation, coverSource) }))
+      .sort((left, right) => right.priority - left.priority || left.index - right.index)
+      .map((item) => item.operation);
+  }
+
+  function uploadMatchesCover(upload, coverSource) {
+    return Boolean(upload?.mediaId && coverSource && imageSourcesMatch(upload.source, coverSource));
+  }
+
+  async function applyCoverMetadata(coverSource, articleId, upload, summary) {
+    if (!uploadMatchesCover(upload, coverSource) || summary.cover.graphql || summary.cover.skippedReason) return false;
+    summary.cover.matchedUpload = true;
+    summary.cover.mediaIdSuffix = upload.mediaId ? upload.mediaId.slice(-8) : null;
+    if (!articleId) {
+      summary.cover.skippedReason = "No article id in URL";
+      console.warn(LOG, "cover update skipped: no article id");
+      return false;
+    }
+    throwIfCancelled();
+    progress("Setting cover...");
+    const result = await updateCoverGraphql(articleId, upload.mediaId).catch((error) => ({
+      ok: false,
+      error: error?.message || String(error)
+    }));
+    summary.cover.graphql = result;
+    if (!result.ok) console.warn(LOG, "cover update failed", result);
+    return Boolean(result.ok);
+  }
+
   function isVisible(element) {
     const rect = element.getBoundingClientRect();
     if (rect.width < 4 || rect.height < 4) return false;
@@ -803,21 +878,7 @@
     cancelRequested = false;
     let draftNode = findDraftStateNode();
     if (!draftNode) throw new Error("X Draft.js editor was not reachable");
-    const articleId = articleIdFromUrl();
-    throwIfCancelled();
-    progress("Pasting structured Markdown...");
-    draftNode = await ensureDraftCharacterSample(draftNode);
-    throwIfCancelled();
-    const writeResult = writeDraftBlocks(draftNode, payload.blocks);
-    if (!writeResult.ok) {
-      console.warn(LOG, "structured block write failed; falling back to paste", writeResult.error);
-      pasteHtml(payload.html, payload.plain);
-    }
-    draftNode = await waitForDraftMarkers(payload.markerPrefix, (payload.plan || []).length);
-    if (!draftNode) throw new Error("X Draft.js editor was not reachable after writing Markdown");
-    await sleep(150);
-    throwIfCancelled();
-
+    let articleId = articleIdFromUrl();
     const summary = {
       atomicOk: 0,
       atomicFail: 0,
@@ -844,8 +905,36 @@
       }
     };
 
+    await applyTitleMetadata(payload.title, articleId, summary);
+    draftNode = findDraftStateNode() || draftNode;
+
+    throwIfCancelled();
+    progress("Pasting structured Markdown...");
+    draftNode = await ensureDraftCharacterSample(draftNode);
+    throwIfCancelled();
+    const writeResult = writeDraftBlocks(draftNode, payload.blocks);
+    if (!writeResult.ok) {
+      console.warn(LOG, "structured block write failed; falling back to paste", writeResult.error);
+      pasteHtml(payload.html, payload.plain);
+    }
+    draftNode = await waitForDraftMarkers(payload.markerPrefix, (payload.plan || []).length);
+    if (!draftNode) throw new Error("X Draft.js editor was not reachable after writing Markdown");
+    await sleep(150);
+    throwIfCancelled();
+    articleId ||= articleIdFromUrl();
+    if (articleId) {
+      await applyTitleGraphqlMetadata(payload.title, articleId, summary);
+    }
+    if (payload.title && !summary.title.ui?.ok) {
+      await applyTitleMetadata(payload.title, articleId, summary);
+      draftNode = findDraftStateNode() || draftNode;
+    }
+
     const atomicOps = (payload.plan || []).filter((item) => item.op.type === "atomic");
-    const imageOps = (payload.plan || []).filter((item) => item.op.type === "image");
+    const imageOps = orderImageOperationsForMetadata(
+      (payload.plan || []).filter((item) => item.op.type === "image"),
+      payload.cover
+    );
 
     if (atomicOps.length) {
       throwIfCancelled();
@@ -868,6 +957,7 @@
       });
 
     const uploads = [];
+    let coverUpload = null;
     for (let index = 0; index < imageOps.length; index += 1) {
       throwIfCancelled();
       draftNode = findDraftStateNode() || draftNode;
@@ -887,6 +977,11 @@
           source: op.op.source,
           coverOnly: Boolean(op.op.coverOnly)
         });
+        const upload = uploads[uploads.length - 1];
+        if (!coverUpload && uploadMatchesCover(upload, payload.cover)) {
+          coverUpload = upload;
+          await applyCoverMetadata(payload.cover, articleId, upload, summary);
+        }
       } else {
         summary.imgFail += 1;
         summary.imageErrors.push({
@@ -911,52 +1006,21 @@
       await sleep(400);
     }
 
-    if (payload.title) {
-      throwIfCancelled();
-      progress("Setting title...");
-      const result = await setTitleViaUi(payload.title);
-      summary.title.ui = result;
-      if (!result.ok) console.warn(LOG, "title failed", result.error);
-      if (articleId) {
-        const graphResult = await updateTitleGraphql(articleId, payload.title).catch((error) => ({
-          ok: false,
-          error: error?.message || String(error)
-        }));
-        summary.title.graphql = graphResult;
-        if (!graphResult.ok) console.warn(LOG, "title GraphQL failed", graphResult);
-      } else {
-        summary.title.graphql = { ok: false, skipped: true, reason: "No article id in URL" };
-      }
-    }
-
     if (payload.cover) {
       throwIfCancelled();
-      if (!articleId) {
+      if (!summary.cover.graphql && !summary.cover.skippedReason && !articleId) {
         summary.cover.skippedReason = "No article id in URL";
         console.warn(LOG, "cover update skipped: no article id");
-      } else {
-        const coverUpload = uploads.find((upload) => imageSourcesMatch(upload.source, payload.cover) && upload.mediaId);
-        if (coverUpload) {
-          summary.cover.matchedUpload = true;
-          summary.cover.mediaIdSuffix = coverUpload.mediaId ? coverUpload.mediaId.slice(-8) : null;
-          progress("Setting cover...");
-          const result = await updateCoverGraphql(articleId, coverUpload.mediaId).catch((error) => ({
-            ok: false,
-            error: error?.message || String(error)
-          }));
-          summary.cover.graphql = result;
-          if (result.ok) {
-            await sleep(600);
-            const deleteResult = deleteBlockByKey(draftNode, coverUpload.blockKey);
-            summary.cover.bodyBlockDeleted = deleteResult;
-            if (!deleteResult.ok) console.warn(LOG, "cover block cleanup failed", deleteResult);
-          } else {
-            console.warn(LOG, "cover update failed", result);
-          }
-        } else {
-          summary.cover.skippedReason = "Cover source was not uploaded; it may have stayed as a Markdown link";
-          console.info(LOG, "cover skipped because the source was not uploaded", payload.cover);
-        }
+      } else if (!summary.cover.graphql && !summary.cover.skippedReason) {
+        summary.cover.skippedReason = "Cover source was not uploaded; it may have stayed as a Markdown link";
+        console.info(LOG, "cover skipped because the source was not uploaded", payload.cover);
+      }
+      if (summary.cover.graphql?.ok && coverUpload?.blockKey) {
+        await sleep(600);
+        draftNode = findDraftStateNode() || draftNode;
+        const deleteResult = deleteBlockByKey(draftNode, coverUpload.blockKey);
+        summary.cover.bodyBlockDeleted = deleteResult;
+        if (!deleteResult.ok) console.warn(LOG, "cover block cleanup failed", deleteResult);
       }
     }
 

@@ -1024,14 +1024,73 @@ h2 {
   font-weight: 640;
 }
 
-#markdown {
+.draft-editor-shell {
   display: block;
   grid-row: 4;
+  position: relative;
   min-height: min(430px, calc(100dvh - 292px));
+}
+
+#markdown {
+  display: block;
+  min-height: 100%;
+  height: 100%;
   border-top: 1px solid color-mix(in oklch, var(--line), transparent 72%);
   border-bottom: 1px solid color-mix(in oklch, var(--line), transparent 38%);
   background: color-mix(in oklch, var(--paper), var(--paper-2) 9%);
   resize: none;
+}
+
+.draft-media-alert {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 12;
+  width: min(270px, calc(100% - 36px));
+  display: grid;
+  gap: 5px;
+  padding: 13px 14px;
+  border: 1px solid color-mix(in oklch, var(--danger), var(--line) 52%);
+  background: color-mix(in oklch, var(--paper), var(--danger) 5%);
+  color: var(--danger);
+  box-shadow: 0 16px 34px color-mix(in oklch, var(--ink), transparent 88%);
+  text-align: center;
+  transform: translate(-50%, -50%);
+  animation: xposter-media-alert-in var(--motion-medium) var(--ease-out-quint) both;
+  pointer-events: none;
+}
+
+.draft-media-alert[hidden] {
+  display: none;
+}
+
+.draft-media-alert strong {
+  color: inherit;
+  font-size: 13px;
+  font-weight: 860;
+  line-height: 1.2;
+}
+
+.draft-media-alert span {
+  color: color-mix(in oklch, var(--danger), var(--muted) 36%);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+:root[data-theme="dark"] .draft-media-alert {
+  background: color-mix(in oklch, var(--danger), #17232d 86%);
+}
+
+@keyframes xposter-media-alert-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 8px)) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
 }
 
 #markdown:hover {
@@ -2330,6 +2389,7 @@ textarea:focus-visible,
   .draft-queue-item[data-status="writing"] .draft-queue-state::before,
   .record-edit-dialog,
   .record-edit-sheet,
+  .draft-media-alert,
   .review-list li[data-note="media-limit"],
   .ledger-list li[data-ledger-kind="media-limit"],
   .inline-write-status[data-tone="work"],
@@ -3130,6 +3190,19 @@ textarea:focus-visible,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color var(--motion-quick) ease;
+}
+
+.record-history-item:hover .record-title strong,
+.record-history-item:focus-visible .record-title strong,
+.record-history-item:focus-within .record-title strong {
+  color: var(--signal-text);
+}
+
+:root[data-theme="dark"] .record-history-item:hover .record-title strong,
+:root[data-theme="dark"] .record-history-item:focus-visible .record-title strong,
+:root[data-theme="dark"] .record-history-item:focus-within .record-title strong {
+  color: var(--signal);
 }
 
 .record-file-name {
@@ -3298,10 +3371,13 @@ textarea:focus-visible,
   z-index: 90;
   display: grid;
   align-items: center;
-  padding: 10px;
-  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  padding: clamp(16px, 4vw, 32px);
+  padding-top: max(clamp(18px, 5vh, 42px), env(safe-area-inset-top));
+  padding-right: max(clamp(16px, 4vw, 32px), env(safe-area-inset-right));
+  padding-bottom: max(clamp(18px, 5vh, 42px), env(safe-area-inset-bottom));
+  padding-left: max(clamp(16px, 4vw, 32px), env(safe-area-inset-left));
   background: color-mix(in oklch, var(--ink), transparent 72%);
-  overflow: hidden;
+  overflow: auto;
   overscroll-behavior: contain;
   touch-action: none;
   animation: xposter-sheet-fade var(--motion-medium) var(--ease-out-quint) both;
@@ -3310,11 +3386,12 @@ textarea:focus-visible,
 .record-edit-dialog {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 6px;
+  gap: 12px;
   width: min(100%, 620px);
   height: min(82dvh, 680px);
+  min-height: min(520px, calc(100dvh - 48px));
   margin-inline: auto;
-  padding: 9px 10px 8px;
+  padding: clamp(14px, 3vw, 20px);
   border: 1px solid color-mix(in oklch, var(--line), transparent 16%);
   background: var(--paper);
   box-shadow: 0 24px 70px color-mix(in oklch, var(--ink), transparent 68%);
@@ -3326,9 +3403,10 @@ textarea:focus-visible,
 .record-edit-dialog header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 14px;
   align-items: center;
-  min-height: 32px;
+  min-height: 36px;
+  padding-inline: 2px;
 }
 
 .record-edit-dialog header div {
@@ -3364,11 +3442,11 @@ textarea:focus-visible,
   min-height: 0;
   height: 100%;
   resize: none;
-  padding: 11px;
+  padding: 15px 16px;
   border: 1px solid color-mix(in oklch, var(--line), transparent 14%);
   background: color-mix(in oklch, var(--paper-2), var(--paper) 76%);
   color: var(--ink);
-  font: 11.5px/1.48 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font: 12px/1.56 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   outline: 0;
   overflow: auto;
   overscroll-behavior: contain;
@@ -3384,8 +3462,9 @@ textarea:focus-visible,
   display: flex;
   flex-wrap: nowrap;
   justify-content: flex-end;
-  gap: 5px;
+  gap: 8px;
   min-height: 34px;
+  padding-top: 2px;
 }
 
 .record-edit-actions .primary,
@@ -4083,7 +4162,7 @@ textarea:focus-visible,
 
 .setting-subcontrols {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(132px, .8fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   align-items: end;
 }
@@ -4111,8 +4190,7 @@ textarea:focus-visible,
   line-height: 1.2;
 }
 
-.setting-subcontrols select,
-.setting-subcontrols input[type="range"] {
+.setting-subcontrols select {
   width: 100%;
   min-width: 0;
 }
@@ -4126,31 +4204,7 @@ textarea:focus-visible,
   font-weight: 720;
 }
 
-.setting-control-head {
-  display: flex !important;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin: 0 !important;
-}
-
-.setting-control-head span {
-  margin: 0;
-}
-
-.setting-control-head output {
-  color: var(--signal-text);
-  font-size: 10.5px;
-  font-weight: 820;
-  line-height: 1;
-}
-
-.setting-subcontrols input[type="range"] {
-  accent-color: var(--signal);
-}
-
-.setting-sound-controls select:disabled,
-.setting-sound-controls input[type="range"]:disabled {
+.setting-sound-controls select:disabled {
   cursor: not-allowed;
   opacity: 0.52;
 }
@@ -4327,6 +4381,7 @@ textarea:focus-visible,
     grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   }
 
+  .draft-editor-shell,
   #markdown,
   .draft-queue {
     min-height: min(390px, calc(100dvh - 276px));
@@ -4497,17 +4552,18 @@ textarea:focus-visible,
 
 @media (max-width: 420px) {
   .record-edit-sheet {
-    padding: 0;
-    padding-top: 8px;
+    padding-top: max(14px, env(safe-area-inset-top));
+    padding-right: max(14px, env(safe-area-inset-right));
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
+    padding-left: max(14px, env(safe-area-inset-left));
   }
 
   .record-edit-dialog {
     width: 100%;
     height: min(88dvh, 720px);
+    min-height: min(540px, calc(100dvh - 28px));
     grid-template-rows: auto minmax(0, 1fr) auto;
-    border-right: 0;
-    border-bottom: 0;
-    border-left: 0;
+    padding: 13px;
   }
 
   .record-edit-actions {

@@ -51,7 +51,13 @@
         <div class="draft-brief" id="draftBrief" data-tone="idle" aria-live="polite">
           <span id="draftRecognized" data-i18n="Step 1: paste Markdown, or choose a .md file.">Step 1: paste Markdown, or choose a .md file.</span>
         </div>
-        <textarea id="markdown" spellcheck="false" placeholder="Paste Markdown here, choose a file, or drop .md files." data-i18n-placeholder="Paste Markdown here, choose a file, or drop .md files."></textarea>
+        <div class="draft-editor-shell">
+          <textarea id="markdown" spellcheck="false" placeholder="Paste Markdown here, choose a file, or drop .md files." data-i18n-placeholder="Paste Markdown here, choose a file, or drop .md files."></textarea>
+          <div class="draft-media-alert" id="draftMediaAlert" role="alert" aria-live="assertive" hidden>
+            <strong id="draftMediaAlertTitle" data-i18n="Too many images">Too many images</strong>
+            <span id="draftMediaAlertDetail">Images: 0/25.</span>
+          </div>
+        </div>
         <section class="draft-queue" id="draftQueue" aria-label="Pending Markdown queue" data-i18n-aria-label="Pending Markdown queue" hidden>
           <div class="draft-queue-head">
             <div>
@@ -666,8 +672,16 @@
                 </div>
                 <em>Idle</em>
               </li>
-              <li data-timeline-step="media" data-tone="idle">
+              <li data-timeline-step="metadata" data-tone="idle">
                 <span class="timeline-index">2</span>
+                <div>
+                  <strong>Set title and cover</strong>
+                  <span>Title and cover will be prepared first when available.</span>
+                </div>
+                <em>Idle</em>
+              </li>
+              <li data-timeline-step="media" data-tone="idle">
+                <span class="timeline-index">3</span>
                 <div>
                   <strong>Prepare media</strong>
                   <span>Images and tables will be prepared after parsing.</span>
@@ -675,7 +689,7 @@
                 <em>Idle</em>
               </li>
               <li data-timeline-step="paste" data-tone="idle">
-                <span class="timeline-index">3</span>
+                <span class="timeline-index">4</span>
                 <div>
                   <strong>Write article body</strong>
                   <span>The article body is not ready yet.</span>
@@ -683,18 +697,10 @@
                 <em>Idle</em>
               </li>
               <li data-timeline-step="replace" data-tone="idle">
-                <span class="timeline-index">4</span>
+                <span class="timeline-index">5</span>
                 <div>
                   <strong>Place images and embeds</strong>
                   <span>X editor status is unknown.</span>
-                </div>
-                <em>Idle</em>
-              </li>
-              <li data-timeline-step="metadata" data-tone="idle">
-                <span class="timeline-index">5</span>
-                <div>
-                  <strong>Set title and cover</strong>
-                  <span>Title and cover will be added when available.</span>
                 </div>
                 <em>Idle</em>
               </li>
@@ -866,13 +872,6 @@
                 <option value="bell" data-i18n="Warm bell">Warm bell</option>
                 <option value="pop" data-i18n="Light pop">Light pop</option>
               </select>
-            </label>
-            <label class="setting-volume-control">
-              <span class="setting-control-head">
-                <span data-i18n="Volume">Volume</span>
-                <output id="successSoundVolumeValue" for="successSoundVolume">75%</output>
-              </span>
-              <input id="successSoundVolume" type="range" min="20" max="100" step="5" value="75" aria-label="Volume" data-i18n-aria-label="Volume" />
             </label>
           </div>
         </div>
