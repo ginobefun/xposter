@@ -48,11 +48,37 @@
           <strong data-i18n="Drop Markdown here">Drop Markdown here</strong>
           <span data-i18n="Release anywhere in this panel to load or queue the draft.">Release anywhere in this panel to load or queue the draft.</span>
         </div>
-        <div class="draft-brief" id="draftBrief" data-tone="idle" aria-live="polite">
-          <span id="draftRecognized" data-i18n="Step 1: paste Markdown, or choose a .md file.">Step 1: paste Markdown, or choose a .md file.</span>
-        </div>
         <div class="draft-editor-shell">
+          <div class="draft-editor-toolbar" id="draftEditorToolbar" aria-label="Markdown editor tools" data-i18n-aria-label="Markdown editor tools">
+            <div class="draft-editor-modes" role="group" aria-label="Editor mode" data-i18n-aria-label="Editor mode">
+              <button type="button" data-editor-mode="edit" aria-pressed="true" data-i18n="Write">Write</button>
+              <button type="button" data-editor-mode="read" aria-pressed="false" data-i18n="Read">Read</button>
+              <button type="button" data-editor-mode="check" aria-pressed="false" data-i18n="Check">Check</button>
+            </div>
+            <div class="draft-editor-formatting" role="group" aria-label="Markdown formatting" data-i18n-aria-label="Markdown formatting">
+              <button type="button" data-editor-command="bold" title="Bold" aria-label="Bold" data-i18n-title="Bold" data-i18n-aria-label="Bold">B</button>
+              <button type="button" data-editor-command="italic" title="Italic" aria-label="Italic" data-i18n-title="Italic" data-i18n-aria-label="Italic"><span>I</span></button>
+              <button type="button" data-editor-command="heading" title="Heading" aria-label="Heading" data-i18n-title="Heading" data-i18n-aria-label="Heading">#</button>
+              <button type="button" data-editor-command="code" title="Code" aria-label="Code" data-i18n-title="Code" data-i18n-aria-label="Code">`</button>
+              <button type="button" data-editor-command="link" title="Link" aria-label="Link" data-i18n-title="Link" data-i18n-aria-label="Link">Link</button>
+              <button type="button" data-editor-command="image" title="Image" aria-label="Image" data-i18n-title="Image" data-i18n-aria-label="Image">Image</button>
+              <button type="button" data-editor-command="table" title="Table" aria-label="Table" data-i18n-title="Table" data-i18n-aria-label="Table">Table</button>
+            </div>
+          </div>
           <textarea id="markdown" spellcheck="false" placeholder="Paste Markdown here, choose a file, or drop .md files." data-i18n-placeholder="Paste Markdown here, choose a file, or drop .md files."></textarea>
+          <div class="draft-inline-preview" id="draftInlinePreview" aria-label="Markdown preview" data-i18n-aria-label="Markdown preview" hidden>
+            <div class="draft-inline-preview-head" id="draftInlinePreviewHead">
+              <strong id="draftInlinePreviewTitle">No title yet</strong>
+              <span id="draftInlinePreviewMeta">Paste Markdown to preview.</span>
+            </div>
+            <div class="draft-inline-preview-body" id="draftInlinePreviewBody">
+              <p class="empty">Preview appears here.</p>
+            </div>
+          </div>
+          <div class="draft-editor-status" id="draftEditorStatus" aria-live="polite">
+            <span id="draftEditorStats">0 chars · 0 images</span>
+            <span id="draftEditorModeLabel">Edit</span>
+          </div>
           <div class="draft-media-alert" id="draftMediaAlert" role="alert" aria-live="assertive" hidden>
             <strong id="draftMediaAlertTitle" data-i18n="Too many images">Too many images</strong>
             <span id="draftMediaAlertDetail">Images: 0/25.</span>
@@ -927,6 +953,7 @@
     <script src="src/i18n.js"></script>
     <script src="src/shared.js"></script>
     <script src="vendor/canvas-confetti.browser.min.js"></script>
+    <script src="vendor/minigfm.min.js"></script>
     <script src="sidepanel.js"></script>
   </body>
 </html>

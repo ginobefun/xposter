@@ -25,6 +25,12 @@
   const X_ARTICLE_MEDIA_HEADROOM_NOTE =
     "Images: {count}/{limit}. Close to X Article's image limit.";
   const ARTICLE_EXPORT_MIN_SCORE = 12;
+  const ARTICLE_EXPORT_LONGFORM_SELECTOR = [
+    "[data-testid='twitterArticleReadView']",
+    "[data-testid='twitter-article-title']",
+    "[data-testid='twitterArticleRichTextView']",
+    "[data-testid='longformRichTextComponent']"
+  ].join(",");
   const CONTENT_ZH_TEXT = new Map(Object.entries({
     "xPoster page drop target": "xPoster 页面拖拽目标",
     "Markdown exported": "Markdown 已导出",
@@ -54,6 +60,7 @@
     "Could not export Markdown": "无法导出 Markdown",
     "Copy Markdown": "复制 Markdown",
     "Download Markdown": "下载 Markdown",
+    "Markdown": "Markdown",
     "MD": "MD",
     "Markdown export action": "Markdown 导出操作",
     "Drop Markdown files to add drafts to the side panel.": "拖入 Markdown 文件，将草稿加入侧边栏。",
@@ -206,8 +213,8 @@
     return location.pathname.match(/\/compose\/articles\/edit\/(\d+)/)?.[1] || null;
   }
 
-  function statusIdFromUrl() {
-    return location.pathname.match(/\/status\/(\d+)/)?.[1] || null;
+  function articleExportIdFromUrl() {
+    return location.pathname.match(/\/(?:status|article)\/(\d+)/)?.[1] || null;
   }
 
   function collectTargetContext() {
@@ -302,8 +309,15 @@
       [/^Images: (\d+)\/25\. Close to X Article's image limit\.$/, "图片：$1/25。已接近 X 文章图片上限。"],
       [/^Article written(?: in (.+))?\.$/, (_, elapsed) => elapsed ? `文章已写入，用时 ${elapsed}。` : "文章已写入。"],
       [/^Article written(?: in (.+))?\. (.+) web image\(s\) stayed as Markdown links\.(?: Replace unreachable image URLs with public links, then write again if those images must upload\.)?$/, (_, elapsed, images) => elapsed ? `文章已写入，用时 ${elapsed}。${images} 张网页图片保留为 Markdown 链接。` : `文章已写入。${images} 张网页图片保留为 Markdown 链接。`],
+      [/^Article written(?: in (.+))?\. (.+) body image\(s\) stayed as Markdown links; (.+) table image\(s\) stayed as Markdown tables; (.+) cover image\(s\) could not be applied\.(?: Replace unreachable image URLs with public links, then write again if those images must upload\.)?$/, (_, elapsed, images, tables, covers) => elapsed ? `文章已写入，用时 ${elapsed}。${images} 张正文图片保留为 Markdown 链接；${tables} 个表格保留为 Markdown；${covers} 张封面图片未能设置。` : `文章已写入。${images} 张正文图片保留为 Markdown 链接；${tables} 个表格保留为 Markdown；${covers} 张封面图片未能设置。`],
+      [/^Article written(?: in (.+))?\. (.+) body image\(s\) stayed as Markdown links; (.+) table image\(s\) stayed as Markdown tables\.(?: Replace unreachable image URLs with public links, then write again if those images must upload\.)?$/, (_, elapsed, images, tables) => elapsed ? `文章已写入，用时 ${elapsed}。${images} 张正文图片保留为 Markdown 链接；${tables} 个表格保留为 Markdown。` : `文章已写入。${images} 张正文图片保留为 Markdown 链接；${tables} 个表格保留为 Markdown。`],
+      [/^Article written(?: in (.+))?\. (.+) body image\(s\) stayed as Markdown links; (.+) cover image\(s\) could not be applied\.(?: Replace unreachable image URLs with public links, then write again if those images must upload\.)?$/, (_, elapsed, images, covers) => elapsed ? `文章已写入，用时 ${elapsed}。${images} 张正文图片保留为 Markdown 链接；${covers} 张封面图片未能设置。` : `文章已写入。${images} 张正文图片保留为 Markdown 链接；${covers} 张封面图片未能设置。`],
+      [/^Article written(?: in (.+))?\. (.+) body image\(s\) stayed as Markdown links\.(?: Replace unreachable image URLs with public links, then write again if those images must upload\.)?$/, (_, elapsed, images) => elapsed ? `文章已写入，用时 ${elapsed}。${images} 张正文图片保留为 Markdown 链接。` : `文章已写入。${images} 张正文图片保留为 Markdown 链接。`],
+      [/^Article written(?: in (.+))?\. (.+) cover image\(s\) could not be applied\.$/, (_, elapsed, images) => elapsed ? `文章已写入，用时 ${elapsed}。${images} 张封面图片未能设置。` : `文章已写入。${images} 张封面图片未能设置。`],
       [/^Article written(?: in (.+))?\. (.+) image upload\(s\) timed out in X\. Wait a moment, then write again or split the article if it has many images\.$/, (_, elapsed, images) => elapsed ? `文章已写入，用时 ${elapsed}。${images} 张图片在 X 上传时等待过久。可以稍等后再次写入，或把多图文章拆成多篇。` : `文章已写入。${images} 张图片在 X 上传时等待过久。可以稍等后再次写入，或把多图文章拆成多篇。`],
       [/^Article written(?: in (.+))?\. (.+) table\(s\) kept as Markdown\.$/, (_, elapsed, tables) => elapsed ? `文章已写入，用时 ${elapsed}。${tables} 个表格保留为 Markdown。` : `文章已写入。${tables} 个表格保留为 Markdown。`],
+      [/^Article written(?: in (.+))?\. (.+) table image\(s\) stayed as Markdown tables; (.+) cover image\(s\) could not be applied\.$/, (_, elapsed, tables, covers) => elapsed ? `文章已写入，用时 ${elapsed}。${tables} 个表格保留为 Markdown；${covers} 张封面图片未能设置。` : `文章已写入。${tables} 个表格保留为 Markdown；${covers} 张封面图片未能设置。`],
+      [/^Article written(?: in (.+))?\. (.+) table image\(s\) stayed as Markdown tables\.$/, (_, elapsed, tables) => elapsed ? `文章已写入，用时 ${elapsed}。${tables} 个表格保留为 Markdown。` : `文章已写入。${tables} 个表格保留为 Markdown。`],
       [/^Article written(?: in (.+))?\. (.+) web image\(s\) stayed as Markdown links; (.+) table\(s\) kept as Markdown\.(?: Replace unreachable image URLs with public links, then write again if those images must upload\.)?$/, (_, elapsed, images, tables) => elapsed ? `文章已写入，用时 ${elapsed}。${images} 张网页图片保留为 Markdown 链接；${tables} 个表格保留为 Markdown。` : `文章已写入。${images} 张网页图片保留为 Markdown 链接；${tables} 个表格保留为 Markdown。`],
       [/^(\d+) local image\(s\) skipped: directory picker is unavailable$/, "$1 张本地图片已跳过：当前浏览器无法选择文件夹"],
       [/^(\d+) local image\(s\) need a local image folder\.\.\.$/, "$1 张本地图片需要选择本地图片文件夹..."],
@@ -993,7 +1007,7 @@
       const tableMap = await prepareTables(segments);
       throwIfImportCancelled();
       const mediaFailures = collectMediaFailures(imageMap, "image")
-        .concat(coverResult && !coverResult.ok ? collectMediaFailures(new Map([[coverSegment, coverResult]]), "image") : [])
+        .concat(coverResult && !coverResult.ok ? collectMediaFailures(new Map([[coverSegment, coverResult]]), "cover") : [])
         .concat(collectMediaFailures(tableMap, "table"));
       const pastePlan = shared.buildPastePlan(segments, imageMap, tableMap, {
         coverSource,
@@ -1352,10 +1366,11 @@
     const byKind = failures.reduce(
       (summary, failure) => {
         if (failure.kind === "table") summary.tables += 1;
+        else if (failure.kind === "cover") summary.covers += 1;
         else summary.images += 1;
         return summary;
       },
-      { images: 0, tables: 0 }
+      { images: 0, tables: 0, covers: 0 }
     );
     return {
       total: failures.length,
@@ -1364,22 +1379,47 @@
     };
   }
 
+  function mediaUploadFailureCounts(main = {}) {
+    const counts = { image: 0, table: 0, cover: 0, timeout: 0 };
+    const errors = Array.isArray(main?.imageErrors) ? main.imageErrors : [];
+    for (const error of errors) {
+      if (/upload took too long|timed out|timeout/i.test(error?.error || "")) {
+        counts.timeout += 1;
+        continue;
+      }
+      const kind = error?.kind === "table" || error?.kind === "cover" ? error.kind : "image";
+      counts[kind] += 1;
+    }
+    const unclassified = Math.max(0, Number(main?.imgFail || 0) - errors.length);
+    counts.image += unclassified;
+    return counts;
+  }
+
+  function coverApplicationFailureCount(summary = {}, uploadFailures = null) {
+    const cover = summary?.main?.cover || {};
+    if (!cover.requested || cover.graphql?.ok) return 0;
+    const counts = uploadFailures || mediaUploadFailureCounts(summary?.main);
+    const explicitCoverFailures = Number(summary?.mediaWarnings?.covers || 0) + Number(counts.cover || 0);
+    return explicitCoverFailures ? 0 : 1;
+  }
+
   function formatCompletionMessage(summary) {
     const warnings = summary?.mediaWarnings || {};
-    const uploadFailures = Number(summary?.main?.imgFail || 0);
-    const uploadTimeouts = Number(summary?.main?.imageErrors?.filter((error) => /upload took too long|timed out|timeout/i.test(error?.error || "")).length || 0);
+    const uploadFailures = mediaUploadFailureCounts(summary?.main);
     const elapsed = summary?.elapsedMs ? ` in ${(summary.elapsedMs / 1000).toFixed(1)}s` : "";
-    const skippedImages = Number(warnings.images || 0) + uploadFailures;
-    const skippedTables = Number(warnings.tables || 0);
-    if (uploadTimeouts) {
-      return `Article written${elapsed}. ${uploadTimeouts} image upload(s) timed out in X. Wait a moment, then write again or split the article if it has many images.`;
+    const skippedImages = Number(warnings.images || 0) + uploadFailures.image;
+    const skippedTables = Number(warnings.tables || 0) + uploadFailures.table;
+    const skippedCovers = Number(warnings.covers || 0) + uploadFailures.cover + coverApplicationFailureCount(summary, uploadFailures);
+    if (uploadFailures.timeout) {
+      return `Article written${elapsed}. ${uploadFailures.timeout} image upload(s) timed out in X. Wait a moment, then write again or split the article if it has many images.`;
     }
-    if (skippedImages || skippedTables) {
+    if (skippedImages || skippedTables || skippedCovers) {
       const parts = [];
       if (skippedImages) {
-        parts.push(`${skippedImages} web image(s) stayed as Markdown links`);
+        parts.push(`${skippedImages} body image(s) stayed as Markdown links`);
       }
-      if (skippedTables) parts.push(`${skippedTables} table(s) kept as Markdown`);
+      if (skippedTables) parts.push(`${skippedTables} table image(s) stayed as Markdown tables`);
+      if (skippedCovers) parts.push(`${skippedCovers} cover image(s) could not be applied`);
       const recovery = skippedImages
         ? " Replace unreachable image URLs with public links, then write again if those images must upload."
         : "";
@@ -1924,7 +1964,7 @@
   }
 
   function isArticleExportRoute() {
-    return /^https:\/\/(?:x|twitter)\.com\/[^/?#]+\/status\/\d+(?:$|[/?#])/.test(location.href) && !isArticleRoute();
+    return /^https:\/\/(?:x|twitter)\.com\/[^/?#]+\/(?:status|article)\/\d+(?:$|[/?#])/.test(location.href) && !isArticleRoute();
   }
 
   function scheduleArticleExportSync(delay = 160) {
@@ -1953,25 +1993,23 @@
       removeArticleExportButton();
       return;
     }
-    const root = ensureArticleExportRoot(article.container);
+    const root = ensureArticleExportRoot();
     if (!root) return;
     root.dataset.articleTitle = article.title || "";
     root.dataset.articleMarkdown = article.markdown;
     root.dataset.articleFileName = articleFileName(article.title);
     root.dataset.mode = normalizeArticleExportMode(state.articleExport.mode);
+    root.style.setProperty("--__xposter-article-export-inline-end", `${articleDockInlineEnd(article.container)}px`);
     updateArticleExportButtonMode();
   }
 
   function removeArticleExportButton() {
-    document.querySelectorAll("[data-xposter-article-export-host]").forEach((node) => {
-      node.removeAttribute("data-xposter-article-export-host");
-    });
     state.articleExport.root = null;
     document.getElementById(ARTICLE_EXPORT_ID)?.remove();
   }
 
-  function ensureArticleExportRoot(container) {
-    if (!container?.isConnected) return null;
+  function ensureArticleExportRoot() {
+    if (!document.body) return null;
     let root = document.getElementById(ARTICLE_EXPORT_ID);
     if (!root) {
       root = document.createElement("div");
@@ -1997,9 +2035,7 @@
         if (root.isConnected && root.dataset.motion === "entered") delete root.dataset.motion;
       }, 320);
     }
-    if (root.parentElement !== container) root.parentElement?.removeAttribute("data-xposter-article-export-host");
-    container.dataset.xposterArticleExportHost = "true";
-    if (root.parentElement !== container) container.appendChild(root);
+    if (root.parentElement !== document.body) document.body.appendChild(root);
     state.articleExport.root = root;
     return root;
   }
@@ -2012,7 +2048,7 @@
     const main = root.querySelector(".__xposter_article_export_main");
     const title = articleExportLabel(mode);
     if (main) {
-      main.textContent = translateContentText("MD");
+      main.textContent = translateContentText("Markdown");
       main.title = title;
       main.setAttribute("aria-label", title);
     }
@@ -2125,7 +2161,17 @@
   }
 
   function extractReadableXArticle() {
-    return Array.from(document.querySelectorAll("article, main [data-testid='tweetText'], main div[lang]"))
+    if (!hasReadableArticleSignal()) return null;
+    const longformRoots = Array.from(document.querySelectorAll(ARTICLE_EXPORT_LONGFORM_SELECTOR));
+    const articleRoots = articleExportIdFromUrl()
+      ? Array.from(document.querySelectorAll(`a[href*="/article/${articleExportIdFromUrl()}"]`))
+      : [];
+    const candidates = Array.from(new Set(
+      longformRoots
+        .concat(articleRoots)
+        .flatMap((node) => [node.closest("article"), node].filter(Boolean))
+    ));
+    return candidates
       .map(articleExportCandidate)
       .filter(Boolean)
       .reduce((best, candidate) => {
@@ -2138,6 +2184,7 @@
   function articleExportCandidate(element) {
     const container = articleExportContainer(element);
     if (!container || container.closest(`#${ARTICLE_EXPORT_ID}`)) return null;
+    if (!containerHasReadableArticleSignal(container)) return null;
     const parts = articleMarkdownParts(container);
     const title = detectArticleExportTitle(container, parts);
     const markdown = normalizeMarkdownLines([
@@ -2157,6 +2204,32 @@
     };
   }
 
+  function hasReadableArticleSignal() {
+    return Boolean(document.querySelector(ARTICLE_EXPORT_LONGFORM_SELECTOR) || articleExportMediaLinks().length);
+  }
+
+  function containerHasReadableArticleSignal(container) {
+    return Boolean(
+      container?.matches?.(ARTICLE_EXPORT_LONGFORM_SELECTOR) ||
+      container?.querySelector?.(ARTICLE_EXPORT_LONGFORM_SELECTOR) ||
+      articleExportMediaLinks(container).length
+    );
+  }
+
+  function articleExportMediaLinks(root = document) {
+    const id = articleExportIdFromUrl();
+    if (!id) return [];
+    return Array.from(root.querySelectorAll(`a[href*="/article/${id}"]`))
+      .filter((link) => {
+        try {
+          const url = new URL(link.getAttribute("href") || link.href || "", location.origin);
+          return url.pathname.includes(`/article/${id}`) && (url.pathname.endsWith(`/article/${id}`) || url.pathname.includes(`/article/${id}/media/`));
+        } catch {
+          return false;
+        }
+      });
+  }
+
   function articleExportContainer(element) {
     let best = element.closest("article") || element;
     for (let node = element; node && node !== document.body; node = node.parentElement) {
@@ -2169,6 +2242,14 @@
       if (node.matches?.("article")) break;
     }
     return best;
+  }
+
+  function articleDockInlineEnd(container) {
+    const fallback = 24;
+    const rect = container?.getBoundingClientRect?.();
+    if (!rect || rect.width < 320) return fallback;
+    const space = Math.max(12, Math.round(window.innerWidth - Math.min(window.innerWidth - 12, rect.right)));
+    return Math.min(Math.max(space, 16), 420);
   }
 
   function scoreArticleExportCandidate(candidate) {
@@ -2345,7 +2426,7 @@
   }
 
   function articleFileName(title) {
-    const fallback = statusIdFromUrl() ? `x-article-${statusIdFromUrl()}` : "x-article";
+    const fallback = articleExportIdFromUrl() ? `x-article-${articleExportIdFromUrl()}` : "x-article";
     const base = String(title || fallback)
       .normalize("NFKD")
       .replace(/[\u0300-\u036f]/g, "")
@@ -2362,18 +2443,19 @@
     style.id = ARTICLE_EXPORT_STYLE_ID;
     style.textContent = `
       #${ARTICLE_EXPORT_ID} {
-        position: absolute;
-        right: 8px;
-        bottom: 8px;
-        z-index: 20;
+        position: fixed;
+        right: var(--__xposter-article-export-inline-end, 24px);
+        bottom: 24px;
+        z-index: 2147483645;
         display: inline-flex;
         align-items: center;
-        border: 1px solid rgba(83, 100, 113, 0.12);
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.62);
+        min-height: 38px;
+        border: 1px solid rgba(83, 100, 113, 0.22);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.92);
         color: #0f1419;
-        box-shadow: 0 4px 12px rgba(15, 20, 25, 0.06);
-        opacity: 0.22;
+        box-shadow: 0 12px 34px rgba(15, 20, 25, 0.14);
+        opacity: 0.74;
         transform: translateZ(0);
         transform-origin: 100% 100%;
         transition:
@@ -2382,22 +2464,20 @@
           background 160ms cubic-bezier(0.25, 1, 0.5, 1),
           box-shadow 180ms cubic-bezier(0.25, 1, 0.5, 1),
           transform 160ms cubic-bezier(0.25, 1, 0.5, 1);
-        font: 10.5px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;
+        font: 12px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;
         letter-spacing: 0;
-        backdrop-filter: blur(8px);
+        backdrop-filter: blur(14px) saturate(1.08);
       }
       #${ARTICLE_EXPORT_ID}[data-motion="entered"] {
         animation: __xposter_article_export_in 260ms cubic-bezier(0.22, 1, 0.36, 1);
       }
-      [data-xposter-article-export-host="true"] {
-        position: relative !important;
-      }
       #${ARTICLE_EXPORT_ID}:hover,
       #${ARTICLE_EXPORT_ID}:focus-within {
-        opacity: 0.92;
-        border-color: rgba(83, 100, 113, 0.38);
-        box-shadow: 0 9px 22px rgba(15, 20, 25, 0.11);
-        transform: translate3d(0, -1px, 0);
+        opacity: 1;
+        border-color: rgba(83, 100, 113, 0.42);
+        background: rgba(255, 255, 255, 0.98);
+        box-shadow: 0 16px 42px rgba(15, 20, 25, 0.18);
+        transform: translate3d(0, -2px, 0);
       }
       #${ARTICLE_EXPORT_ID}[data-feedback="done"],
       #${ARTICLE_EXPORT_ID}[data-feedback="mode"] {
@@ -2424,18 +2504,18 @@
         transform: translateY(1px) scale(0.985);
       }
       #${ARTICLE_EXPORT_ID} .__xposter_article_export_main {
-        width: 32px;
-        min-height: 26px;
-        padding: 0;
-        font-weight: 720;
+        min-width: 76px;
+        min-height: 36px;
+        padding: 0 12px;
+        font-weight: 740;
       }
       #${ARTICLE_EXPORT_ID} .__xposter_article_export_toggle {
-        width: 22px;
-        min-height: 26px;
+        width: 30px;
+        min-height: 36px;
         border-left: 1px solid rgba(83, 100, 113, 0.18);
-        border-radius: 0 999px 999px 0;
+        border-radius: 0 10px 10px 0;
         transform-origin: 50% 50%;
-        font-size: 10px;
+        font-size: 12px;
       }
       #${ARTICLE_EXPORT_ID} .__xposter_article_export_toggle[aria-expanded="true"] {
         transform: rotate(180deg);
@@ -2443,13 +2523,13 @@
       #${ARTICLE_EXPORT_ID} .__xposter_article_export_menu {
         position: absolute;
         right: 0;
-        bottom: calc(100% + 8px);
-        min-width: 168px;
+        bottom: calc(100% + 10px);
+        min-width: 176px;
         display: grid;
         gap: 2px;
         padding: 6px;
         border: 1px solid rgba(83, 100, 113, 0.22);
-        border-radius: 8px;
+        border-radius: 10px;
         background: rgba(255, 255, 255, 0.98);
         box-shadow: 0 14px 36px rgba(15, 20, 25, 0.16);
         transform-origin: 100% 100%;
@@ -2479,10 +2559,10 @@
       @keyframes __xposter_article_export_in {
         from {
           opacity: 0;
-          transform: translate3d(0, 5px, 0) scale(0.985);
+          transform: translate3d(0, 6px, 0) scale(0.985);
         }
         to {
-          opacity: 0.22;
+          opacity: 0.74;
           transform: translate3d(0, 0, 0) scale(1);
         }
       }
@@ -2509,10 +2589,14 @@
       }
       @media (prefers-color-scheme: dark) {
         #${ARTICLE_EXPORT_ID} {
-          background: rgba(22, 24, 28, 0.62);
-          border-color: rgba(231, 233, 234, 0.12);
+          background: rgba(22, 24, 28, 0.92);
+          border-color: rgba(231, 233, 234, 0.18);
           color: #e7e9ea;
-          box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+          box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32);
+        }
+        #${ARTICLE_EXPORT_ID}:hover,
+        #${ARTICLE_EXPORT_ID}:focus-within {
+          background: rgba(22, 24, 28, 0.98);
         }
         #${ARTICLE_EXPORT_ID} .__xposter_article_export_toggle {
           border-left-color: rgba(231, 233, 234, 0.16);
@@ -2541,6 +2625,12 @@
         #${ARTICLE_EXPORT_ID} .__xposter_article_export_menu button:hover,
         #${ARTICLE_EXPORT_ID} .__xposter_article_export_menu button:focus-visible {
           transform: none;
+        }
+      }
+      @media (max-width: 720px) {
+        #${ARTICLE_EXPORT_ID} {
+          right: max(12px, env(safe-area-inset-right));
+          bottom: max(14px, env(safe-area-inset-bottom));
         }
       }
     `;

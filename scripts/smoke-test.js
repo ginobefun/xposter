@@ -230,6 +230,29 @@ assert.ok(
   "successful Markdown writes should finish with a done status even when images stay as links"
 );
 assert.ok(
+  contentScriptText.includes('collectMediaFailures(new Map([[coverSegment, coverResult]]), "cover")') &&
+    contentScriptText.includes("function mediaUploadFailureCounts") &&
+    contentScriptText.includes('parts.push(`${skippedImages} body image(s) stayed as Markdown links`)') &&
+    contentScriptText.includes('parts.push(`${skippedTables} table image(s) stayed as Markdown tables`)') &&
+    contentScriptText.includes('parts.push(`${skippedCovers} cover image(s) could not be applied`)') &&
+    contentScriptText.includes("function coverApplicationFailureCount") &&
+    contentScriptText.includes("counts.image += unclassified;") &&
+    mainWorldText.includes("function imageOperationKind") &&
+    mainWorldText.includes("kind: imageOperationKind(op)") &&
+    sidepanelText.includes("function mediaUploadFailureCounts") &&
+    sidepanelText.includes("function coverApplicationFailureCount") &&
+    sidepanelText.includes('parts.push(`${keptImages} body image(s) stayed as Markdown links`)') &&
+    sidepanelText.includes('parts.push(`${keptTables} table image(s) stayed as Markdown tables`)') &&
+    sidepanelText.includes('parts.push(`${missedCovers} cover image(s) could not be applied`)') &&
+    sidepanelText.includes('bodyImageWarnings ? `${bodyImageWarnings} body kept`') &&
+    sidepanelText.includes('tableImageWarnings ? `${tableImageWarnings} table kept`') &&
+    sidepanelText.includes('coverImageWarnings ? `${coverImageWarnings} cover missed`') &&
+    sidepanelText.includes('const label = item.op.coverOnly ? "Cover image" : item.marker.includes("_TABLE_") ? "Table image" : "Image";') &&
+    sidepanelText.includes('body image(s) kept as Markdown links') &&
+    sidepanelText.includes('cover image(s) not applied'),
+  "image failure summaries should distinguish body images, rendered tables, cover image application, and legacy unclassified upload failures"
+);
+assert.ok(
   contentScriptText.includes('"Local image folder": "本地图片文件夹"') &&
     contentScriptText.includes('"Choose folder": "选择文件夹"') &&
     contentScriptText.includes("[/^(\\d+) local image\\(s\\) need a root folder\\.$/, \"$1 张本地图片需要选择根文件夹。\"]") &&
@@ -322,15 +345,27 @@ assert.ok(
     contentScriptText.includes('enabled: settings.enabled !== false') &&
     contentScriptText.includes('function installArticleExportButton') &&
     contentScriptText.includes('function extractReadableXArticle') &&
+    contentScriptText.includes("const ARTICLE_EXPORT_LONGFORM_SELECTOR") &&
+    contentScriptText.includes("function hasReadableArticleSignal") &&
+    contentScriptText.includes("function containerHasReadableArticleSignal") &&
+    contentScriptText.includes("function articleExportMediaLinks") &&
+    contentScriptText.includes("if (!hasReadableArticleSignal()) return null;") &&
+    contentScriptText.includes("longformRoots") &&
+    contentScriptText.includes("articleRoots") &&
+    contentScriptText.includes("if (!containerHasReadableArticleSignal(container)) return null;") &&
     contentScriptText.includes('function markdownForArticleNode') &&
     contentScriptText.includes('navigator.clipboard.writeText(text)') &&
     contentScriptText.includes('link.download = fileName || articleFileName("")') &&
     contentScriptText.includes('await setArticleExportMode(button.dataset.exportMode)') &&
     contentScriptText.includes("signalArticleExportFeedback(root, \"done\")") &&
-    contentScriptText.includes('main.textContent = translateContentText("MD")') &&
+    contentScriptText.includes('main.textContent = translateContentText("Markdown")') &&
     contentScriptText.includes('main.title = title') &&
-    contentScriptText.includes("width: 32px") &&
-    contentScriptText.includes("opacity: 0.22") &&
+    contentScriptText.includes("position: fixed") &&
+    contentScriptText.includes("right: var(--__xposter-article-export-inline-end, 24px)") &&
+    contentScriptText.includes("function articleDockInlineEnd") &&
+    contentScriptText.includes("min-width: 76px") &&
+    contentScriptText.includes("opacity: 0.74") &&
+    !contentScriptText.includes('[data-xposter-article-export-host="true"]') &&
     contentScriptText.includes('const LANGUAGE_STORAGE_KEY = "xposter_language"') &&
     contentScriptText.includes("function restoreContentLanguage") &&
     contentScriptText.includes("function translateContentText") &&
@@ -654,18 +689,19 @@ assert.ok(
   "record and queue stats should use compact counts and avoid stretching record card actions"
 );
 assert.ok(
-  sidepanelText.includes('parts.push(parsed.title ? "Title found" : "No title")') &&
-    sidepanelText.includes('pluralizeUnit(resolvedCounts.image || 0, "image")') &&
-    sidepanelText.includes('pluralizeUnit(resolvedCounts.code || 0, "code block")') &&
+  sidepanelText.includes('function draftEditorModeLabel') &&
+    sidepanelText.includes('if (counts.image) parts.push(formatCompactUnit(counts.image, "image", "images", "图"))') &&
+    sidepanelText.includes('if (counts.table) parts.push(formatCompactUnit(counts.table, "table", "tables", "表"))') &&
     sidepanelText.includes('formatCompactUnit(length, "char", "chars", "字符")') &&
     sidepanelText.includes("Web images: ${remoteCount}") &&
     sidepanelText.includes("Images: ${imageCount}") &&
     !sidepanelText.includes("Unreachable images stay as links.") &&
     !sidepanelText.includes("draftTargetStateText") &&
     !sidepanelHtml.includes('id="draftTargetState"') &&
-    sidepanelCss.includes("min-height: 28px;") &&
-    sidepanelCss.includes("font-weight: 640;"),
-  "recognized draft summary should stay compact and focused on title, images, and code blocks"
+    !sidepanelHtml.includes('id="draftBrief"') &&
+    !sidepanelCss.includes(".draft-brief") &&
+    sidepanelCss.includes(".draft-editor-status"),
+  "draft editor status should stay compact and avoid a duplicate recognized-summary row"
 );
 assert.ok(
   contentScriptText.includes("message.options || {}"),
@@ -675,21 +711,29 @@ assert.ok(
   const titleBeforeBody =
     mainWorldText.indexOf("await applyTitleMetadata(payload.title, articleId, summary);") <
     mainWorldText.indexOf('progress("Pasting structured Markdown...")');
-  const coverBeforeMediaReorder =
-    mainWorldText.indexOf("await applyCoverMetadata(payload.cover, articleId, upload, summary);") <
-    mainWorldText.indexOf('progress("Reordering uploaded media...")');
+  const orderedImageOps =
+    mainWorldText.includes('const imageOps = (payload.plan || []).filter((item) => item.op.type === "image");') &&
+    !mainWorldText.includes("function orderImageOperationsForMetadata") &&
+    !mainWorldText.includes("coverPriorityForImageOperation");
+  const coverAfterUpload =
+    mainWorldText.indexOf("await applyCoverMetadata(payload.cover, articleId, upload, summary);") >
+    mainWorldText.indexOf("const result = await uploadImageAtMarker");
   const timelineMetadataFirst =
     sidepanelHtml.indexOf('data-timeline-step="metadata"') < sidepanelHtml.indexOf('data-timeline-step="media"') &&
     sidepanelHtml.indexOf('data-timeline-step="metadata"') < sidepanelHtml.indexOf('data-timeline-step="paste"');
   assert.ok(
     titleBeforeBody &&
-      coverBeforeMediaReorder &&
+      orderedImageOps &&
+      coverAfterUpload &&
       timelineMetadataFirst &&
-      mainWorldText.includes("function orderImageOperationsForMetadata") &&
-      sidepanelText.includes("Title is set first; the cover image uploads before matching body images when possible.") &&
-      sidepanelText.includes("Setting article title and preparing cover before body import.") &&
+      mainWorldText.includes("upload.coverOnly && !coverUpload") &&
+      mainWorldText.includes("coverUpload?.coverOnly && coverUpload.blockKey") &&
+      !mainWorldText.includes("coverUpload?.blockKey && (coverUpload.coverOnly || summary.cover.graphql?.ok)") &&
+      mainWorldText.includes("if (!String(text || \"\")) return deleteBlockByKey(draftNode, blockKey).ok;") &&
+      sidepanelText.includes("Title is set first; body images keep Markdown order, and the cover is matched after upload.") &&
+      sidepanelText.includes("Setting article title and matching cover after ordered uploads.") &&
       !sidepanelText.includes("Setting the title and cover after the body import."),
-    "article import should establish title first, prioritize cover upload, and present metadata before body writing"
+    "article import should set title first while preserving Markdown image order and cleaning temporary cover blocks"
   );
 }
 assert.ok(
@@ -703,6 +747,43 @@ assert.ok(
 assert.ok(
   sidepanelHtml.includes("vendor/canvas-confetti.browser.min.js"),
   "side panel should load packaged canvas-confetti locally"
+);
+assert.ok(
+  sidepanelHtml.includes("vendor/minigfm.min.js") &&
+  sidepanelHtml.includes('id="draftEditorToolbar"') &&
+    sidepanelHtml.includes('id="draftEditorStatus"') &&
+    sidepanelHtml.includes('data-editor-mode="edit"') &&
+    sidepanelHtml.includes('data-editor-mode="read"') &&
+    sidepanelHtml.includes('data-editor-mode="check"') &&
+    sidepanelHtml.includes('id="draftInlinePreview"') &&
+    sidepanelHtml.includes('<textarea id="markdown"') &&
+    sidepanelText.includes('const DRAFT_EDITOR_MODES = new Set(["edit", "read", "check"])') &&
+    sidepanelText.includes("function draftText()") &&
+    sidepanelText.includes("function miniGfm()") &&
+    sidepanelText.includes("function protectReadPreviewCodeBlocks") &&
+    sidepanelText.includes("function restoreReadPreviewCodeBlocks") &&
+    sidepanelText.includes("function sanitizePreviewHtml") &&
+    sidepanelText.includes("const schemeMatch = raw.match") &&
+    sidepanelText.includes("return /^(https?|mailto|tel|ftp)$/i.test(schemeMatch[1]) ? raw : \"\";") &&
+    sidepanelText.includes("button.disabled = !isEdit || queueModeActive()") &&
+    sidepanelText.includes("function setDraftText(markdown") &&
+    sidepanelText.includes("function handleDraftEditorInput") &&
+    sidepanelText.includes("function setDraftEditorMode") &&
+    sidepanelText.includes("function updateInlinePreview") &&
+    sidepanelText.includes("function applyTextareaCommand") &&
+    sidepanelText.includes("return importMarkdownDraft(draftText())") &&
+    !sidepanelHtml.includes("vendor/codemirror-editor.bundle.js") &&
+    !sidepanelText.includes("window.xPosterCodeMirror") &&
+    !sidepanelText.includes("lineNumbers") &&
+    !sidepanelText.includes("return importMarkdownDraft(els.markdown.value)") &&
+    !sidepanelHtml.includes('id="draftBrief"') &&
+    sidepanelCss.includes(".draft-editor-toolbar") &&
+    sidepanelCss.includes('.draft-inline-preview[data-preview-mode="read"]') &&
+    sidepanelCss.includes(".draft-inline-preview") &&
+    sidepanelCss.includes(".draft-editor-status") &&
+    sidepanelCss.includes("@media (max-width: 520px)") &&
+    sidepanelCss.includes(".draft-editor-formatting {\n    flex-wrap: wrap;"),
+  "side panel should use a lightweight native textarea editor with MiniGFM read preview, conversion check, responsive controls, and adapter-based draft reads"
 );
 assert.ok(
   sidepanelHtml.includes('id="draftDropTarget"') &&

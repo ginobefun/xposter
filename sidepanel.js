@@ -4,6 +4,16 @@
   const IMPORT_ICON_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v3H4V4Zm0 5h10v3H4V9Zm0 5h8v3H4v-3Zm13.5-.7V9h2v4.3l1.6-1.6 1.4 1.4-3.5 3.5-3.5-3.5 1.4-1.4 1.6 1.6ZM17 18h5v2h-5v-2Z"/></svg>';
   const els = {
     markdown: document.getElementById("markdown"),
+    draftEditorToolbar: document.getElementById("draftEditorToolbar"),
+    draftEditorStatus: document.getElementById("draftEditorStatus"),
+    draftEditorStats: document.getElementById("draftEditorStats"),
+    draftEditorModeLabel: document.getElementById("draftEditorModeLabel"),
+    draftInlinePreview: document.getElementById("draftInlinePreview"),
+    draftInlinePreviewHead: document.getElementById("draftInlinePreviewHead"),
+    draftInlinePreviewTitle: document.getElementById("draftInlinePreviewTitle"),
+    draftInlinePreviewMeta: document.getElementById("draftInlinePreviewMeta"),
+    draftInlinePreviewBody: document.getElementById("draftInlinePreviewBody"),
+    draftEditorShell: document.querySelector(".draft-editor-shell"),
     pageState: document.getElementById("pageState"),
     advancedDiagnostics: document.getElementById("advancedDiagnostics"),
     evidenceDetails: document.getElementById("evidenceDetails"),
@@ -52,8 +62,6 @@
     reviewList: document.getElementById("reviewList"),
     importDraft: document.getElementById("importDraft"),
     importHint: document.getElementById("importHint"),
-    draftBrief: document.getElementById("draftBrief"),
-    draftRecognized: document.getElementById("draftRecognized"),
     draftMediaAlert: document.getElementById("draftMediaAlert"),
     draftMediaAlertTitle: document.getElementById("draftMediaAlertTitle"),
     draftMediaAlertDetail: document.getElementById("draftMediaAlertDetail"),
@@ -163,6 +171,7 @@
   const MARKDOWN_LOAD_ERROR_TITLE = "Could not load Markdown";
   const MARKDOWN_LOAD_ERROR_DETAIL = "Try a .md, .markdown, .txt file, or plain Markdown text.";
   const NO_NEW_DRAFTS_DETAIL = "No new Markdown drafts were added.";
+  const DRAFT_EDITOR_MODES = new Set(["edit", "read", "check"]);
   const DRAFT_SAVE_DELAY_MS = 220;
   const DRAFT_ANALYZE_DELAY_MS = 140;
   const RECORD_SEARCH_DELAY_MS = 120;
@@ -235,6 +244,8 @@
   let successAudioContext = null;
   let successConfetti = null;
   let lastSuccessFeedbackKey = "";
+  let draftEditorMode = "edit";
+  let miniGfmRenderer = null;
   let runSummaryCollapseTimer = null;
   let draftDropStatusTimer = null;
   let remoteImageAccessStatus = { origins: [], available: [], missing: [], checkedAt: null };
@@ -278,6 +289,20 @@
       "Add or drop Markdown": "添加或拖入 Markdown",
       "Use Add draft, choose a file, or drop .md files here.": "粘贴 Markdown、选择文件，或把 .md 文件拖到这里。",
       "Paste Markdown here, choose a file, or drop .md files.": "在这里粘贴 Markdown、选择文件，或拖入 .md 文件。",
+      "Markdown editor tools": "Markdown 编辑工具",
+      "Editor mode": "编辑模式",
+      "Markdown formatting": "Markdown 格式",
+      Write: "编写",
+      Read: "阅读",
+      Check: "检查",
+      Bold: "加粗",
+      Italic: "斜体",
+      Heading: "标题",
+      Code: "代码",
+      Link: "链接",
+      Image: "图片",
+      Table: "表格",
+      Edit: "编辑",
       "Release to load it.": "松开后载入草稿。",
       "Reading dropped Markdown.": "正在读取拖入的 Markdown。",
       "Reading file...": "正在读取文件...",
@@ -476,8 +501,8 @@
       "Preparing Markdown, images, and the X editor.": "正在准备 Markdown、图片和 X 编辑器。",
       "Writing the article body into X.": "正在把文章正文写入 X。",
       "Placing images, tweets, code, and dividers into the article.": "正在放置图片、推文、代码和分隔线。",
-      "Setting the title and cover before the body import.": "先设置标题和封面，再写入正文。",
-      "Setting article title and preparing cover before body import.": "先设置文章标题，并优先准备封面。",
+      "Setting the title and cover without changing body image order.": "设置标题和封面，同时保持正文图片顺序。",
+      "Setting article title and matching cover after ordered uploads.": "设置文章标题，并在图片按顺序上传后匹配封面。",
       "Live status received from the active X tab.": "已收到当前 X 标签页的实时状态。",
       "Writing finished.": "写入完成。",
       "Writing failed": "写入失败",
@@ -1050,6 +1075,8 @@
 
       "No title yet": "暂无标题",
       "Article body": "文章正文",
+      "Reading preview": "阅读预览",
+      "Publishing check": "发布检查",
       "Write Markdown to inspect the article structure.": "输入 Markdown 以检查文章结构。",
       "The preview focuses on publishing structure: headings, media, tables, code, tweet embeds, and the final import plan.": "预览聚焦发布结构：标题、媒体、表格、代码、推文嵌入和最终导入计划。",
       "This preview shows what xPoster found and what it will move into X.": "这里会显示 xPoster 识别到什么，以及会把什么搬进 X。",
@@ -1070,6 +1097,11 @@
       "Start": "开始",
       "Paste a draft or choose a Markdown file.": "粘贴草稿或选择 Markdown 文件。",
       "Paste Markdown to see what xPoster will move into X.": "粘贴 Markdown 后查看 xPoster 会搬进 X 的内容。",
+      "Paste Markdown to preview.": "粘贴 Markdown 后预览。",
+      "Paste Markdown to read it here.": "粘贴 Markdown 后在这里阅读。",
+      "Paste Markdown to check conversion.": "粘贴 Markdown 后检查转换结果。",
+      "Preview appears here.": "预览会显示在这里。",
+      "Reading preview appears here.": "阅读预览会显示在这里。",
       "This preview shows headings, paragraphs, images, tables, tweet links, code, and dividers before anything is written to X.": "在写入 X 之前，这里会显示标题、段落、图片、表格、推文链接、代码和分割线。",
       "Write text": "写入正文",
       "Upload image": "上传图片",
@@ -1235,7 +1267,7 @@
       "Cover will be applied when X allows it.": "X 允许时会设置封面。",
       "Title and cover will be applied when X allows it.": "X 允许时会设置标题和封面。",
       "Title and cover are handled before the body when X allows it.": "X 允许时会先处理标题和封面。",
-      "Title is set first; the cover image uploads before matching body images when possible.": "会先设置标题；封面图会尽量优先上传。",
+      "Title is set first; body images keep Markdown order, and the cover is matched after upload.": "会先设置标题；正文图片保持 Markdown 顺序，封面在上传后匹配。",
       "No title or cover is available to apply.": "没有可设置的标题或封面。",
       "Capture evidence": "保存记录",
       "Save import record": "保存导入记录",
@@ -1508,6 +1540,7 @@
       "Image uploaded": "图片已上传",
       "Body image is present after X upload completes.": "X 上传完成后正文图片存在。",
       "Images appear in the article after X upload completes.": "X 上传完成后图片显示在文章里。",
+      "Cover image": "封面图片",
       "Table image": "表格图片",
       "Markdown table is rendered and uploaded as an image.": "Markdown 表格会渲染并作为图片上传。",
       "Tweet embed": "推文嵌入",
@@ -1733,6 +1766,7 @@
       "Horizontal divider": "水平分隔线",
       Paste: "粘贴",
       Upload: "上传",
+      "Cover image": "封面图片",
       "Table image": "表格图片",
       Image: "图片",
       "prepared media": "已准备的媒体",
@@ -1872,6 +1906,288 @@
     return shared.parseMarkdown(markdown, normalizeImportOptions(options));
   }
 
+  function draftText() {
+    return els.markdown?.value || "";
+  }
+
+  function draftEditorModeLabel(mode = draftEditorMode) {
+    if (mode === "read") return "Read";
+    if (mode === "check") return "Check";
+    return "Write";
+  }
+
+  function miniGfm() {
+    if (miniGfmRenderer) return miniGfmRenderer;
+    if (typeof window.MiniGFM !== "function") return null;
+    miniGfmRenderer = new window.MiniGFM({ noMoreBr: true });
+    return miniGfmRenderer;
+  }
+
+  function protectReadPreviewCodeBlocks(markdown = "") {
+    const codeBlocks = [];
+    const protectedMarkdown = String(markdown || "").replace(
+      /(^|\n)(`{3,4})[ \t]*([^\n`]*)\n([\s\S]*?)\n\2(?=\n|$)/g,
+      (match, prefix, fence, language, code) => {
+        const token = `XPOSTERCODEBLOCK${codeBlocks.length}TOKEN`;
+        const lang = language.trim();
+        codeBlocks.push({
+          token,
+          html: `<pre><code${lang ? ` data-language="${shared.escapeHtml(lang)}"` : ""}>${shared.escapeHtml(code)}</code></pre>`
+        });
+        return `${prefix}<xposter-code-block>${token}</xposter-code-block>`;
+      }
+    );
+    return { protectedMarkdown, codeBlocks };
+  }
+
+  function restoreReadPreviewCodeBlocks(html = "", codeBlocks = []) {
+    return codeBlocks.reduce((output, block) => {
+      const tokenPattern = new RegExp(`<xposter-code-block>\\s*${block.token}\\s*</xposter-code-block>|<p>\\s*${block.token}\\s*</p>|${block.token}`, "g");
+      return output.replace(tokenPattern, block.html);
+    }, String(html || ""));
+  }
+
+  function safePreviewUrl(value = "") {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    if (/[\u0000-\u001f\u007f<>]/.test(raw)) return "";
+    const schemeMatch = raw.match(/^([a-z][a-z0-9+.-]*):/i);
+    if (schemeMatch) {
+      return /^(https?|mailto|tel|ftp)$/i.test(schemeMatch[1]) ? raw : "";
+    }
+    return raw;
+  }
+
+  function sanitizePreviewHtml(html = "") {
+    const template = document.createElement("template");
+    template.innerHTML = String(html || "");
+    template.content.querySelectorAll("script, iframe, object, embed, frame, link, meta, style, svg, math").forEach((node) => {
+      node.replaceWith(document.createTextNode(node.textContent || ""));
+    });
+    template.content.querySelectorAll("*").forEach((node) => {
+      for (const attr of Array.from(node.attributes)) {
+        const name = attr.name.toLowerCase();
+        const value = attr.value || "";
+        if (name.startsWith("on") || name === "style" || name === "srcdoc") {
+          node.removeAttribute(attr.name);
+          continue;
+        }
+        if (name === "href" || name === "src") {
+          const safeUrl = safePreviewUrl(value);
+          if (!safeUrl) {
+            node.removeAttribute(attr.name);
+            continue;
+          }
+          node.setAttribute(attr.name, safeUrl);
+        }
+      }
+      if (node.tagName === "A") {
+        node.setAttribute("target", "_blank");
+        node.setAttribute("rel", "noreferrer noopener");
+      }
+      if (node.tagName === "IMG") {
+        node.setAttribute("loading", "lazy");
+        node.setAttribute("decoding", "async");
+      }
+    });
+    return template.innerHTML;
+  }
+
+  function updateDraftEditorStatus() {
+    const text = draftText();
+    const parsed = latestParsed || (text.trim() ? parseDraftMarkdown(text) : null);
+    const counts = parsed?.segments?.length ? shared.segmentCounts(parsed.segments) : shared.segmentCounts([]);
+    if (els.draftEditorStats) {
+      const parts = [formatCompactUnit(text.length, "char", "chars", "字符")];
+      if (counts.image) parts.push(formatCompactUnit(counts.image, "image", "images", "图"));
+      if (counts.table) parts.push(formatCompactUnit(counts.table, "table", "tables", "表"));
+      setLocalizedText(els.draftEditorStats, parts.join(" · "));
+    }
+    if (els.draftEditorModeLabel) setLocalizedText(els.draftEditorModeLabel, draftEditorModeLabel());
+  }
+
+  function setDraftText(markdown) {
+    const text = String(markdown || "");
+    if (els.markdown && els.markdown.value !== text) els.markdown.value = text;
+    updateDraftEditorStatus();
+    updateInlinePreview();
+  }
+
+  function focusDraftTextEditor() {
+    if (queueModeActive()) return;
+    setDraftEditorMode("edit");
+    els.markdown?.focus?.();
+  }
+
+  function handleDraftEditorInput({ pasted = false } = {}) {
+    updateDraftEditorStatus();
+    updateInlinePreview();
+    scheduleSaveDraft();
+    scheduleAnalyzeDraft();
+    syncActiveQueueWithDraft();
+    if (pasted) {
+      suppressNextTypedHistory = true;
+      window.clearTimeout(draftInputHistoryTimer);
+      window.setTimeout(() => {
+        saveDraft();
+        analyzeDraftNow();
+        window.clearTimeout(draftInputHistoryTimer);
+        rememberDraftHistory("paste", { forceNew: true });
+        acknowledgeDraftInput();
+      }, 0);
+      return;
+    }
+    if (suppressNextTypedHistory) {
+      suppressNextTypedHistory = false;
+      return;
+    }
+    scheduleDraftHistory("typed");
+  }
+
+  function textareaSelection() {
+    const textarea = els.markdown;
+    if (!textarea) return { start: 0, end: 0, selected: "" };
+    const start = Math.max(0, textarea.selectionStart || 0);
+    const end = Math.max(start, textarea.selectionEnd || start);
+    return {
+      start,
+      end,
+      selected: textarea.value.slice(start, end)
+    };
+  }
+
+  function replaceTextareaSelection(text, selectStart = 0, selectEnd = text.length) {
+    const textarea = els.markdown;
+    if (!textarea) return;
+    const { start, end } = textareaSelection();
+    textarea.setRangeText(text, start, end, "end");
+    textarea.focus();
+    textarea.setSelectionRange(start + selectStart, start + selectEnd);
+    handleDraftEditorInput();
+  }
+
+  function surroundTextareaSelection(before, after = before) {
+    const { selected } = textareaSelection();
+    replaceTextareaSelection(`${before}${selected}${after}`, before.length, before.length + selected.length);
+  }
+
+  function insertAtCurrentLine(prefix) {
+    const textarea = els.markdown;
+    if (!textarea) return;
+    const position = Math.max(0, textarea.selectionStart || 0);
+    const lineStart = textarea.value.lastIndexOf("\n", position - 1) + 1;
+    textarea.setRangeText(prefix, lineStart, lineStart, "end");
+    textarea.focus();
+    textarea.setSelectionRange(position + prefix.length, position + prefix.length);
+    handleDraftEditorInput();
+  }
+
+  function applyTextareaCommand(command) {
+    if (command === "bold") surroundTextareaSelection("**");
+    else if (command === "italic") surroundTextareaSelection("_");
+    else if (command === "heading") insertAtCurrentLine("## ");
+    else if (command === "code") surroundTextareaSelection("`");
+    else if (command === "link") replaceTextareaSelection("[link text](https://)", 1, 10);
+    else if (command === "image") replaceTextareaSelection("![alt text](https://)", 2, 10);
+    else if (command === "table") replaceTextareaSelection("| Column | Value |\n| --- | --- |\n|  |  |\n", 34, 34);
+  }
+
+  function setDraftEditorMode(mode = "edit") {
+    draftEditorMode = DRAFT_EDITOR_MODES.has(mode) ? mode : "edit";
+    const isEdit = draftEditorMode === "edit";
+    const isPreview = !isEdit;
+    if (els.draftEditorShell) els.draftEditorShell.dataset.mode = draftEditorMode;
+    if (els.markdown) {
+      els.markdown.hidden = isPreview || queueModeActive();
+      els.markdown.setAttribute("aria-hidden", isPreview || queueModeActive() ? "true" : "false");
+      els.markdown.tabIndex = isPreview || queueModeActive() ? -1 : 0;
+    }
+    if (els.draftInlinePreview) {
+      els.draftInlinePreview.hidden = !isPreview || queueModeActive();
+      els.draftInlinePreview.setAttribute("aria-hidden", isPreview && !queueModeActive() ? "false" : "true");
+    }
+    els.draftEditorToolbar?.querySelectorAll("[data-editor-mode]").forEach((button) => {
+      const pressed = button.dataset.editorMode === draftEditorMode;
+      button.setAttribute("aria-pressed", pressed ? "true" : "false");
+    });
+    els.draftEditorToolbar?.querySelectorAll("[data-editor-command]").forEach((button) => {
+      button.disabled = !isEdit || queueModeActive();
+    });
+    updateDraftEditorStatus();
+    if (isPreview) updateInlinePreview();
+  }
+
+  function updateInlinePreview(parsed = latestParsed, counts = latestCounts) {
+    if (!els.draftInlinePreview) return;
+    const mode = draftEditorMode === "read" ? "read" : "check";
+    if (els.draftInlinePreview) els.draftInlinePreview.dataset.previewMode = mode;
+    const text = draftText();
+    if (!text.trim()) {
+      if (els.draftInlinePreviewTitle) setLocalizedText(els.draftInlinePreviewTitle, mode === "read" ? "Reading preview" : "Publishing check");
+      if (els.draftInlinePreviewMeta) setLocalizedText(els.draftInlinePreviewMeta, mode === "read" ? "Paste Markdown to read it here." : "Paste Markdown to check conversion.");
+      if (els.draftInlinePreviewBody) {
+        els.draftInlinePreviewBody.innerHTML = `<p class="empty">${shared.escapeHtml(localizeText(mode === "read" ? "Reading preview appears here." : "Preview appears here."))}</p>`;
+      }
+      translateDynamicDom(els.draftInlinePreview);
+      return;
+    }
+    const safe = shared.escapeHtml;
+    if (mode === "read") {
+      const renderer = miniGfm();
+      const { protectedMarkdown, codeBlocks } = protectReadPreviewCodeBlocks(text);
+      if (els.draftInlinePreviewTitle) setLocalizedText(els.draftInlinePreviewTitle, "Reading preview");
+      if (els.draftInlinePreviewMeta) setLocalizedText(els.draftInlinePreviewMeta, [
+        formatCompactUnit(text.length, "char", "chars", "字符"),
+        formatCompactUnit((text.match(/^!\[/gm) || []).length, "image", "images", "图")
+      ].join(" · "));
+      if (els.draftInlinePreviewBody) {
+        els.draftInlinePreviewBody.innerHTML = renderer
+          ? sanitizePreviewHtml(restoreReadPreviewCodeBlocks(renderer.parse(protectedMarkdown), codeBlocks))
+          : `<pre class="draft-read-fallback">${safe(text)}</pre>`;
+      }
+      translateDynamicDom(els.draftInlinePreview);
+      return;
+    }
+    if (!parsed?.segments?.length) {
+      if (els.draftInlinePreviewTitle) setLocalizedText(els.draftInlinePreviewTitle, "Publishing check");
+      if (els.draftInlinePreviewMeta) setLocalizedText(els.draftInlinePreviewMeta, "Paste Markdown to check conversion.");
+      if (els.draftInlinePreviewBody) {
+        els.draftInlinePreviewBody.innerHTML = `<p class="empty">${safe(localizeText("No publishable blocks detected yet."))}</p>`;
+      }
+      translateDynamicDom(els.draftInlinePreview);
+      return;
+    }
+    const derivedCounts = counts || shared.segmentCounts(parsed.segments);
+    const specialCount = (derivedCounts.tweet || 0) + (derivedCounts.code || 0) + (derivedCounts.divider || 0);
+    if (els.draftInlinePreviewTitle) {
+      setLocalizedText(els.draftInlinePreviewTitle, "Publishing check");
+    }
+    if (els.draftInlinePreviewMeta) {
+      els.draftInlinePreviewMeta.textContent = [
+        formatCompactUnit(derivedCounts.text || 0, "text block", "text blocks", "段"),
+        formatCompactUnit(derivedCounts.image || 0, "image", "images", "图"),
+        formatCompactUnit(derivedCounts.table || 0, "table", "tables", "表"),
+        `${specialCount} special block(s)`
+      ].join(" · ");
+    }
+    if (els.draftInlinePreviewBody) {
+      const rows = parsed.segments.slice(0, 16).map((segment) => {
+        const kind = previewKindLabel(segment);
+        const value = previewSegmentText(segment);
+        return `<div class="preview-item"><span class="preview-kind">${safe(kind)}</span><span class="preview-text">${safe(value)}</span></div>`;
+      });
+      if (parsed.segments.length > 16) rows.push(`<p class="empty">${safe(`${parsed.segments.length - 16} more block(s) hidden in preview.`)}</p>`);
+      els.draftInlinePreviewBody.innerHTML = rows.join("") || `<p class="empty">${safe("No publishable blocks detected yet.")}</p>`;
+    }
+    translateDynamicDom(els.draftInlinePreview);
+  }
+
+  function runDraftEditorCommand(command) {
+    setDraftEditorMode("edit");
+    applyTextareaCommand(command);
+    focusDraftTextEditor();
+  }
+
   function importOptionsPayload() {
     return normalizeImportOptions(importOptions);
   }
@@ -1884,7 +2200,7 @@
   function applyImportOptions(options = importOptions) {
     importOptions = normalizeImportOptions(options);
     syncImportOptionsControls();
-    if (latestParsed?.segments?.length || els.markdown?.value?.trim()) analyzeDraft();
+    if (latestParsed?.segments?.length || draftText().trim()) analyzeDraft();
     else {
       syncRemoteImageAccessStatusFromDraft(null);
       updatePreflight();
@@ -2222,6 +2538,7 @@
       [/^(\d+(?:,\d+)*) chars · (\d+) images? · (\d+) code blocks?$/, "$1 字 · 图片 $2 · 代码块 $3"],
       [/^(\d+) characters, ready to write\.$/, "$1 字符，可以写入。"],
       [/^(\d+(?:,\d+)*) chars$/, "$1 字"],
+      [/^(\d+(?:,\d+)*) chars · (\d+(?:,\d+)*) text blocks? · (\d+(?:,\d+)*) images?$/, "$1 字 · $2 段 · $3 图"],
       [/^Queued (\d+) Markdown draft(?:s)?\.$/, "已加入 $1 篇 Markdown 草稿。"],
       [/^(\d+) queued draft(?:s)?$/, "$1 篇草稿在队列中"],
       [/^(\d+) queued draft(?:s)? ready\.$/, "$1 篇队列草稿已就绪。"],
@@ -2295,6 +2612,13 @@
       [/^Article written in (.+)\. (.+) web image\(s\) stayed as Markdown links\. Allow the image website in xPoster, then write again to upload them\.$/, "文章已写入，用时 $1。$2 张网页图片保留为 Markdown 链接。替换为公开可下载链接后再次写入即可上传。"],
       [/^Article written in (.+)\. (.+) table\(s\) stayed as Markdown\.$/, "文章已写入，用时 $1。$2 个表格保留为 Markdown。"],
       [/^Article written in (.+)\. (.+) web image\(s\) stayed as Markdown links; (.+) table\(s\) stayed as Markdown\. Allow the image website in xPoster, then write again to upload them\.$/, "文章已写入，用时 $1。$2 张网页图片保留为 Markdown 链接；$3 个表格保留为 Markdown。替换为公开可下载图片链接后再次写入即可上传。"],
+      [/^Article written(?: in (.+))?\. (.+) body image\(s\) stayed as Markdown links; (.+) table image\(s\) stayed as Markdown tables; (.+) cover image\(s\) could not be applied\.(?: Replace unreachable image URLs with public links, then write again if those images must upload\.)?$/, (_, elapsed, images, tables, covers) => elapsed ? `文章已写入，用时 ${elapsed}。${images} 张正文图片保留为 Markdown 链接；${tables} 个表格保留为 Markdown；${covers} 张封面图片未能设置。` : `文章已写入。${images} 张正文图片保留为 Markdown 链接；${tables} 个表格保留为 Markdown；${covers} 张封面图片未能设置。`],
+      [/^Article written(?: in (.+))?\. (.+) body image\(s\) stayed as Markdown links; (.+) table image\(s\) stayed as Markdown tables\.(?: Replace unreachable image URLs with public links, then write again if those images must upload\.)?$/, (_, elapsed, images, tables) => elapsed ? `文章已写入，用时 ${elapsed}。${images} 张正文图片保留为 Markdown 链接；${tables} 个表格保留为 Markdown。` : `文章已写入。${images} 张正文图片保留为 Markdown 链接；${tables} 个表格保留为 Markdown。`],
+      [/^Article written(?: in (.+))?\. (.+) body image\(s\) stayed as Markdown links; (.+) cover image\(s\) could not be applied\.(?: Replace unreachable image URLs with public links, then write again if those images must upload\.)?$/, (_, elapsed, images, covers) => elapsed ? `文章已写入，用时 ${elapsed}。${images} 张正文图片保留为 Markdown 链接；${covers} 张封面图片未能设置。` : `文章已写入。${images} 张正文图片保留为 Markdown 链接；${covers} 张封面图片未能设置。`],
+      [/^Article written(?: in (.+))?\. (.+) body image\(s\) stayed as Markdown links\.(?: Replace unreachable image URLs with public links, then write again if those images must upload\.)?$/, (_, elapsed, images) => elapsed ? `文章已写入，用时 ${elapsed}。${images} 张正文图片保留为 Markdown 链接。` : `文章已写入。${images} 张正文图片保留为 Markdown 链接。`],
+      [/^Article written(?: in (.+))?\. (.+) table image\(s\) stayed as Markdown tables; (.+) cover image\(s\) could not be applied\.$/, (_, elapsed, tables, covers) => elapsed ? `文章已写入，用时 ${elapsed}。${tables} 个表格保留为 Markdown；${covers} 张封面图片未能设置。` : `文章已写入。${tables} 个表格保留为 Markdown；${covers} 张封面图片未能设置。`],
+      [/^Article written(?: in (.+))?\. (.+) table image\(s\) stayed as Markdown tables\.$/, (_, elapsed, tables) => elapsed ? `文章已写入，用时 ${elapsed}。${tables} 个表格保留为 Markdown。` : `文章已写入。${tables} 个表格保留为 Markdown。`],
+      [/^Article written(?: in (.+))?\. (.+) cover image\(s\) could not be applied\.$/, (_, elapsed, covers) => elapsed ? `文章已写入，用时 ${elapsed}。${covers} 张封面图片未能设置。` : `文章已写入。${covers} 张封面图片未能设置。`],
       [/^Uploaded (\d+), kept (\d+) as links$/, "已上传 $1，$2 个保留为链接"],
       [/^Uploaded (\d+)$/, "已上传 $1"],
       [/^(\d+) uploaded, (\d+) kept$/, "已上传 $1，$2 个保留"],
@@ -2403,6 +2727,13 @@
       [/^Writing complete in (.+) with (\d+) media warning\(s\)\.$/, "写入完成，用时 $1；有 $2 个媒体提醒。"],
       [/^Article written(?: in (.+))?\. (.+) image upload\(s\) timed out in X\. Wait a moment, then write again or split the article if it has many images\.$/, (_, elapsed, images) => elapsed ? `文章已写入，用时 ${elapsed}。${images} 张图片在 X 上传时等待过久。可以稍等后再次写入，或把多图文章拆成多篇。` : `文章已写入。${images} 张图片在 X 上传时等待过久。可以稍等后再次写入，或把多图文章拆成多篇。`],
       [/^(\d+) image upload\(s\) timed out in X; (\d+)\/(\d+) media item\(s\), (.+)\.$/, "$1 张图片在 X 上传时等待过久；已上传 $2/$3 个媒体项，用时 $4。"],
+      [/^(.+) body image\(s\) kept as Markdown links; (.+) table image\(s\) kept as Markdown tables; (.+) cover image\(s\) not applied; (.+)\/(.+) embed\/code item\(s\), (.+)\.$/, "$1 张正文图片保留为 Markdown 链接；$2 个表格保留为 Markdown；$3 张封面图片未能设置；特殊内容 $4/$5，用时 $6。"],
+      [/^(.+) body image\(s\) kept as Markdown links; (.+) table image\(s\) kept as Markdown tables; (.+)\/(.+) embed\/code item\(s\), (.+)\.$/, "$1 张正文图片保留为 Markdown 链接；$2 个表格保留为 Markdown；特殊内容 $3/$4，用时 $5。"],
+      [/^(.+) body image\(s\) kept as Markdown links; (.+) cover image\(s\) not applied; (.+)\/(.+) embed\/code item\(s\), (.+)\.$/, "$1 张正文图片保留为 Markdown 链接；$2 张封面图片未能设置；特殊内容 $3/$4，用时 $5。"],
+      [/^(.+) table image\(s\) kept as Markdown tables; (.+) cover image\(s\) not applied; (.+)\/(.+) embed\/code item\(s\), (.+)\.$/, "$1 个表格保留为 Markdown；$2 张封面图片未能设置；特殊内容 $3/$4，用时 $5。"],
+      [/^(.+) body image\(s\) kept as Markdown links; (.+)\/(.+) embed\/code item\(s\), (.+)\.$/, "$1 张正文图片保留为 Markdown 链接；特殊内容 $2/$3，用时 $4。"],
+      [/^(.+) table image\(s\) kept as Markdown tables; (.+)\/(.+) embed\/code item\(s\), (.+)\.$/, "$1 个表格保留为 Markdown；特殊内容 $2/$3，用时 $4。"],
+      [/^(.+) cover image\(s\) not applied; (.+)\/(.+) embed\/code item\(s\), (.+)\.$/, "$1 张封面图片未能设置；特殊内容 $2/$3，用时 $4。"],
       [/^Uploading image (\d+)\/(\d+)\.\.\.$/, "正在上传图片 $1/$2..."],
       [/^Stop request failed: (.+)$/, "停止请求失败：$1"],
       [/^First H1 was promoted to article title: (.+)$/, "第一个 H1 会作为文章标题：$1"],
@@ -2454,6 +2785,7 @@
       [/^未检测标题 · (\d+) 张图片 · (\d+) 个代码块$/, "No title · $1 images · $2 code blocks"],
       [/^(\d+(?:,\d+)*) 字 · 图片 (\d+) · 代码块 (\d+)$/, "$1 chars · $2 images · $3 code blocks"],
       [/^(\d+(?:,\d+)*) 字$/, "$1 chars"],
+      [/^(\d+(?:,\d+)*) 字 · (\d+(?:,\d+)*) 段 · (\d+(?:,\d+)*) 图$/, "$1 chars · $2 text blocks · $3 images"],
       [/^已加入 (\d+) 篇 Markdown 草稿。$/, "Queued $1 Markdown drafts."],
       [/^(\d+) 篇草稿在队列中$/, "$1 queued drafts"],
       [/^(\d+) 篇队列草稿已就绪。$/, "$1 queued drafts ready."],
@@ -2597,6 +2929,7 @@
     translateDynamicDom();
     populateLanguageSelect();
     updateDraftBrief();
+    updateDraftEditorStatus();
     renderRecordHistory();
     if (persist && hasChromeApi()) {
       chrome.storage.local.set({ [STORAGE_LANGUAGE]: i18n?.preference?.() || currentLanguage });
@@ -2868,23 +3201,9 @@
     return `${formatted} ${Number(count || 0) === 1 ? enSingular : enPlural}`;
   }
 
-  function draftRecognitionText(parsed = latestParsed, counts = latestCounts) {
-    if (!parsed?.segments?.length) return "Step 1: paste Markdown, or choose a .md file.";
-    const resolvedCounts = counts || shared.segmentCounts(parsed.segments);
-    const parts = [];
-    parts.push(parsed.title ? "Title found" : "No title");
-    parts.push(pluralizeUnit(resolvedCounts.image || 0, "image"));
-    parts.push(pluralizeUnit(resolvedCounts.code || 0, "code block"));
-    return parts.join(" · ");
-  }
-
   function updateDraftBrief() {
     const hasDraft = Boolean(latestParsed?.segments?.length);
     if (els.draftPanel) els.draftPanel.dataset.emptyDraft = hasDraft || queueModeActive() ? "false" : "true";
-    if (!els.draftBrief) return;
-    els.draftBrief.dataset.tone = hasDraft ? "ready" : "idle";
-    els.draftBrief.hidden = !hasDraft;
-    setLocalizedText(els.draftRecognized, draftRecognitionText());
   }
 
   function remoteImageProbeKey(segment) {
@@ -2973,7 +3292,7 @@
   }
 
   function buildDraftHistoryEvidence(source = "typed", extra = {}) {
-    const markdown = els.markdown.value || "";
+    const markdown = draftText();
     const snapshot = markdownSnapshot(markdown);
     const parsed = latestParsed || ensureLatestParsedFromDraft();
     const counts = latestCounts || shared.segmentCounts(parsed?.segments || []);
@@ -3018,7 +3337,7 @@
   }
 
   function rememberDraftHistory(source = "typed", extra = {}) {
-    const markdown = els.markdown.value || "";
+    const markdown = draftText();
     if (!markdown.trim() || !latestParsed?.segments?.length) return null;
     const { forceNew = false, ...details } = extra || {};
     const fingerprint = draftFingerprint(markdown);
@@ -3043,7 +3362,7 @@
   function ensureActiveDraftRecordId() {
     if (activeDraftRecordId) return activeDraftRecordId;
     activeDraftRecordId = newRecordId("draft");
-    activeDraftFingerprint = draftFingerprint(els.markdown.value || "");
+    activeDraftFingerprint = draftFingerprint(draftText());
     activeDraftFinalized = false;
     return activeDraftRecordId;
   }
@@ -3110,7 +3429,7 @@
   }
 
   function currentDraftQueueItem() {
-    const text = els.markdown.value || "";
+    const text = draftText();
     if (!text.trim()) return null;
     return createQueueItemFromMarkdown(text, {
       fileName: "",
@@ -3147,8 +3466,9 @@
 
   function syncActiveQueueWithDraft() {
     if (!activeQueueItemId) return;
+    const text = draftText();
     const activeItem = draftQueue.find((item) => item.id === activeQueueItemId);
-    if (activeItem && activeItem.markdown === els.markdown.value) return;
+    if (activeItem && activeItem.markdown === text) return;
     activeQueueItemId = null;
     draftQueue = draftQueue.map((item) => item.status === "loaded" ? { ...item, status: "queued" } : item);
     persistDraftQueue();
@@ -3230,11 +3550,22 @@
   function syncDraftSurface() {
     const hasQueue = queueModeActive();
     if (els.draftQueue) els.draftQueue.hidden = !hasQueue;
-    if (els.markdown) {
-      els.markdown.hidden = hasQueue;
-      els.markdown.setAttribute("aria-hidden", hasQueue ? "true" : "false");
-      els.markdown.tabIndex = hasQueue ? -1 : 0;
+    if (els.draftEditorToolbar) els.draftEditorToolbar.hidden = hasQueue;
+    if (els.draftEditorStatus) els.draftEditorStatus.hidden = hasQueue;
+    if (hasQueue) {
+      if (els.markdown) {
+        els.markdown.hidden = true;
+        els.markdown.setAttribute("aria-hidden", "true");
+        els.markdown.tabIndex = -1;
+      }
+      if (els.draftInlinePreview) {
+        els.draftInlinePreview.hidden = true;
+        els.draftInlinePreview.setAttribute("aria-hidden", "true");
+      }
+    } else {
+      setDraftEditorMode(draftEditorMode);
     }
+    updateDraftEditorStatus();
     updateDraftBrief();
   }
 
@@ -3245,7 +3576,7 @@
     persistDraftQueue();
     suppressNextTypedHistory = true;
     window.clearTimeout(draftInputHistoryTimer);
-    els.markdown.value = text;
+    setDraftText(text);
     saveDraft();
     analyzeDraft();
     renderDraftQueue();
@@ -3395,7 +3726,7 @@
       : entry.status === "loaded" ? { ...entry, status: "queued" } : entry);
     suppressNextTypedHistory = true;
     window.clearTimeout(draftInputHistoryTimer);
-    els.markdown.value = item.markdown;
+    setDraftText(item.markdown);
     saveDraft();
     analyzeDraft();
     if (remember) {
@@ -3423,7 +3754,7 @@
     if (!draftQueue.length) {
       suppressNextTypedHistory = true;
       window.clearTimeout(draftInputHistoryTimer);
-      els.markdown.value = "";
+      setDraftText("");
       saveDraft();
       analyzeDraft();
       setDraftDropStatus("Markdown draft", "Paste Markdown here, choose a file, or drop .md files.", "idle");
@@ -3458,7 +3789,7 @@
     if (id === activeQueueItemId) {
       suppressNextTypedHistory = true;
       window.clearTimeout(draftInputHistoryTimer);
-      els.markdown.value = text;
+      setDraftText(text);
       saveDraft();
       analyzeDraft();
       rememberDraftHistory(updated.source || "queue", {
@@ -3620,7 +3951,7 @@
   }
 
   function renderDraftAnalysis() {
-    const markdown = els.markdown.value;
+    const markdown = draftText();
     if (!markdown.trim()) {
       latestParsed = null;
       latestCounts = shared.segmentCounts([]);
@@ -3639,6 +3970,7 @@
       updateWriteButton();
       updateProgressiveSections();
       syncDraftMediaAlert(null);
+      updateDraftEditorStatus();
       if (!queueModeActive()) {
         setDraftDropStatus("Markdown draft", "Paste Markdown here, choose a file, or drop .md files.", "idle");
       }
@@ -3669,6 +4001,7 @@
       updateWriteButton();
       updateProgressiveSections();
       syncDraftMediaAlert(mediaUploadEstimate(parsed));
+      updateDraftEditorStatus();
       setDraftDropStatus("Markdown loaded", draftReadyDetail(markdown.length, counts), "done");
     } catch (error) {
       log(`Could not analyze draft: ${error?.message || error}`);
@@ -4212,20 +4545,7 @@
     }
     const rows = parsed.segments.slice(0, 18).map((segment) => {
       let kind = previewKindLabel(segment);
-      let text = "";
-      if (segment.type === "text") {
-        text = segment.text;
-      } else if (segment.type === "image") {
-        text = segment.source;
-      } else if (segment.type === "table") {
-        text = `${segment.headers.length} columns, ${segment.rows.length} rows`;
-      } else if (segment.type === "tweet") {
-        text = `Tweet ${segment.tweetId}`;
-      } else if (segment.type === "code") {
-        text = `${segment.language || "code"} · ${(segment.code || "").split("\n").length} lines`;
-      } else if (segment.type === "divider") {
-        text = "Horizontal divider";
-      }
+      let text = previewSegmentText(segment);
       return `<div class="preview-item"><span class="preview-kind">${safe(kind)}</span><span class="preview-text">${safe(text)}</span></div>`;
     });
     if (parsed.segments.length > 18) {
@@ -4263,6 +4583,17 @@
         divider: "Divider"
       }[segment.type] || "Content"
     );
+  }
+
+  function previewSegmentText(segment) {
+    if (!segment) return "";
+    if (segment.type === "text") return segment.text;
+    if (segment.type === "image") return segment.source;
+    if (segment.type === "table") return `${segment.headers.length} columns, ${segment.rows.length} rows`;
+    if (segment.type === "tweet") return `Tweet ${segment.tweetId}`;
+    if (segment.type === "code") return `${segment.language || "code"} · ${(segment.code || "").split("\n").length} lines`;
+    if (segment.type === "divider") return "Horizontal divider";
+    return "";
   }
 
   function renderPlanReadiness(parsed) {
@@ -4329,7 +4660,7 @@
       },
       ...plan.plan.map((item) => {
         if (item.op.type === "image") {
-          const label = item.marker.includes("_TABLE_") ? "Table image" : "Image";
+          const label = item.op.coverOnly ? "Cover image" : item.marker.includes("_TABLE_") ? "Table image" : "Image";
           const fileName = item.op.file?.fileName || "prepared media";
           return { kind: "Upload image", text: `${label} will upload as ${fileName}.` };
         }
@@ -4388,8 +4719,8 @@
 
   function focusMarkdownInput() {
     showWorkspacePanel("draft");
-    scrollTargetIntoView(queueModeActive() ? els.draftQueue : els.markdown, "center");
-    if (!queueModeActive()) window.setTimeout(() => els.markdown?.focus?.(), 0);
+    scrollTargetIntoView(queueModeActive() ? els.draftQueue : els.draftEditorShell || els.markdown, "center");
+    if (!queueModeActive()) window.setTimeout(focusDraftTextEditor, 0);
     log("Focus the Markdown editor below.");
   }
 
@@ -4672,7 +5003,7 @@
     const hasMetadata = metadataParts.length > 0;
     const metadataDetail =
       metadataParts.length === 2
-        ? "Title is set first; the cover image uploads before matching body images when possible."
+        ? "Title is set first; body images keep Markdown order, and the cover is matched after upload."
         : metadataParts[0] === "title"
           ? "Title will be applied when X allows it."
           : "Cover will be applied when X allows it.";
@@ -5218,10 +5549,14 @@
     if (!els.draftDropStatus) return;
     window.clearTimeout(draftDropStatusTimer);
     draftDropStatusTimer = null;
+    if (tone !== "error") {
+      dismissDraftDropStatus();
+      return;
+    }
     els.draftDropStatus.dataset.tone = tone;
     els.draftDropStatus.hidden = false;
-    els.draftDropStatus.setAttribute("role", tone === "error" ? "alert" : "status");
-    if (els.draftDropDismiss) els.draftDropDismiss.hidden = tone !== "done" && tone !== "error";
+    els.draftDropStatus.setAttribute("role", "alert");
+    if (els.draftDropDismiss) els.draftDropDismiss.hidden = false;
     const titleNode = els.draftDropStatus.querySelector("strong");
     const detailNode = els.draftDropStatus.querySelector("span");
     if (titleNode) {
@@ -5233,12 +5568,6 @@
       detailNode.textContent = detail;
     }
     translateDynamicDom(els.draftDropStatus);
-    if (tone !== "error" && tone !== "idle") {
-      draftDropStatusTimer = window.setTimeout(() => {
-        draftDropStatusTimer = null;
-        dismissDraftDropStatus();
-      }, 3400);
-    }
   }
 
   function setCompactImportStatus(summary = null) {
@@ -5259,11 +5588,12 @@
   }
 
   function acknowledgeDraftInput() {
-    if (!els.markdown) return;
-    els.markdown.classList.remove("draft-ack");
-    void els.markdown.offsetWidth;
-    els.markdown.classList.add("draft-ack");
-    window.setTimeout(() => els.markdown?.classList.remove("draft-ack"), 520);
+    const target = els.draftEditorShell || els.markdown;
+    if (!target) return;
+    target.classList.remove("draft-ack");
+    void target.offsetWidth;
+    target.classList.add("draft-ack");
+    window.setTimeout(() => target.classList.remove("draft-ack"), 520);
   }
 
   function draftReadyDetail(length, counts = latestCounts) {
@@ -5587,7 +5917,7 @@
 
   function progressDetailForStatus(text) {
     if (/prepar|准备/i.test(text)) return localizeText("Preparing Markdown, images, and the X editor.");
-    if (/title|cover|标题|封面/i.test(text)) return localizeText("Setting article title and preparing cover before body import.");
+    if (/title|cover|标题|封面/i.test(text)) return localizeText("Setting article title and matching cover after ordered uploads.");
     if (/writing|paste|structured|写入/i.test(text)) return localizeText("Writing the article body into X.");
     if (/upload|上传/i.test(text)) return localizeText("Uploading prepared images and rendered tables through X.");
     if (/reorder|marker|special|insert|放置|清理/i.test(text)) return localizeText("Placing images, tweets, code, and dividers into the article.");
@@ -5614,16 +5944,23 @@
     const images = summary.images || {};
     const warnings = summary.mediaWarnings || {};
     const main = summary.main || {};
+    const uploadFailures = mediaUploadFailureCounts(main);
+    const coverFailures = coverApplicationFailureCount(summary, uploadFailures);
     const imageTotal = (images.ok || 0) + (images.fail || 0);
     const atomicTotal = (main.atomicOk || 0) + (main.atomicFail || 0);
     const elapsed = summary.elapsedMs ? `${(summary.elapsedMs / 1000).toFixed(1)}s` : "elapsed time unknown";
-    const uploadTimeouts = Number(main.imageErrors?.filter((error) => /upload took too long|timed out|timeout/i.test(error?.error || "")).length || 0);
-    if (uploadTimeouts) {
-      return `${uploadTimeouts} image upload(s) timed out in X; ${images.ok || 0}/${imageTotal} media item(s), ${elapsed}.`;
+    if (uploadFailures.timeout) {
+      return `${uploadFailures.timeout} image upload(s) timed out in X; ${images.ok || 0}/${imageTotal} media item(s), ${elapsed}.`;
     }
-    if (warnings.total || main.imgFail) {
-      const skipped = Number(warnings.images || 0) + Number(main.imgFail || 0);
-      return `${skipped}/${imageTotal} image(s) kept as Markdown links; ${main.atomicOk || 0}/${atomicTotal} embed/code item(s), ${elapsed}.`;
+    if (warnings.total || main.imgFail || coverFailures) {
+      const bodyImages = Number(warnings.images || 0) + uploadFailures.image;
+      const tableImages = Number(warnings.tables || 0) + uploadFailures.table;
+      const coverImages = Number(warnings.covers || 0) + uploadFailures.cover + coverFailures;
+      const parts = [];
+      if (bodyImages) parts.push(`${bodyImages} body image(s) kept as Markdown links`);
+      if (tableImages) parts.push(`${tableImages} table image(s) kept as Markdown tables`);
+      if (coverImages) parts.push(`${coverImages} cover image(s) not applied`);
+      return `${parts.join("; ")}; ${main.atomicOk || 0}/${atomicTotal} embed/code item(s), ${elapsed}.`;
     }
     return `${images.ok || 0}/${imageTotal} media item(s), ${main.atomicOk || 0}/${atomicTotal} embed/code item(s), ${elapsed}.`;
   }
@@ -5668,6 +6005,7 @@
     return Boolean(
       Number(warnings.total || 0) ||
       Number(main.imgFail || 0) ||
+      coverApplicationFailureCount(summary) ||
       Number(main.atomicFail || 0) ||
       (main.title?.requested && !summarizeTitleResult(main.title).includes("Set")) ||
       (main.cover?.requested && !summarizeCoverResult(main.cover).startsWith("Set"))
@@ -6147,7 +6485,10 @@
     importCancelRequested = false;
     if (response?.ok) {
       const seconds = ((response.summary?.elapsedMs || 0) / 1000).toFixed(1);
-      const warnings = response.summary?.mediaWarnings?.total || response.summary?.main?.imgFail || 0;
+      const warnings =
+        Number(response.summary?.mediaWarnings?.total || 0) +
+        Number(response.summary?.main?.imgFail || 0) +
+        coverApplicationFailureCount(response.summary);
       if (warnings) log(`Writing complete in ${seconds}s with ${warnings} media warning(s).`);
       if (latestProgress.state !== "complete") recordLiveProgressEvent("complete", { summary: response.summary });
       renderRunSummary(response.summary);
@@ -6179,7 +6520,7 @@
   }
 
   async function importDraft() {
-    return importMarkdownDraft(els.markdown.value);
+    return importMarkdownDraft(draftText());
   }
 
   async function importQueueItem(id) {
@@ -6188,7 +6529,7 @@
     activeQueueItemId = item.id;
     suppressNextTypedHistory = true;
     window.clearTimeout(draftInputHistoryTimer);
-    els.markdown.value = item.markdown;
+    setDraftText(item.markdown);
     saveDraft();
     analyzeDraft();
     renderDraftQueue();
@@ -6233,16 +6574,24 @@
     els.runSummary.hidden = false;
     const imageOk = summary.images?.ok || 0;
     const imageFail = summary.images?.fail || 0;
-    const uploadFail = summary.main?.imgFail || 0;
-    const imageWarnings = (summary.mediaWarnings?.images || 0) + uploadFail;
+    const uploadFailures = mediaUploadFailureCounts(summary.main);
+    const coverFailures = coverApplicationFailureCount(summary, uploadFailures);
+    const bodyImageWarnings = Number(summary.mediaWarnings?.images || 0) + uploadFailures.image;
+    const tableImageWarnings = Number(summary.mediaWarnings?.tables || 0) + uploadFailures.table;
+    const coverImageWarnings = Number(summary.mediaWarnings?.covers || 0) + uploadFailures.cover + coverFailures;
     const hasWarnings = hasRunSummaryWarnings(summary);
     els.runSummary.dataset.tone = hasWarnings ? "warn" : "done";
     if (els.summaryMessage) {
       els.summaryMessage.dataset.tone = hasWarnings ? "warn" : "done";
       els.summaryMessage.textContent = summarizeRunMessage(summary);
     }
-    els.summaryImages.textContent = imageWarnings
-      ? `${imageOk} uploaded, ${imageWarnings} kept`
+    els.summaryImages.textContent = bodyImageWarnings || tableImageWarnings || coverImageWarnings
+      ? [
+          imageOk ? `${imageOk} uploaded` : "",
+          bodyImageWarnings ? `${bodyImageWarnings} body kept` : "",
+          tableImageWarnings ? `${tableImageWarnings} table kept` : "",
+          coverImageWarnings ? `${coverImageWarnings} cover missed` : ""
+        ].filter(Boolean).join(", ")
       : imageOk
         ? `Uploaded ${imageOk}`
         : `${imageOk} / ${imageOk + imageFail}`;
@@ -6255,21 +6604,51 @@
     scheduleRunSummaryCollapse(summary);
   }
 
+  function mediaUploadFailureCounts(main = {}) {
+    const counts = { image: 0, table: 0, cover: 0, timeout: 0 };
+    const errors = Array.isArray(main?.imageErrors) ? main.imageErrors : [];
+    for (const error of errors) {
+      if (/upload took too long|timed out|timeout/i.test(error?.error || "")) {
+        counts.timeout += 1;
+        continue;
+      }
+      const kind = error?.kind === "table" || error?.kind === "cover" ? error.kind : "image";
+      counts[kind] += 1;
+    }
+    const unclassified = Math.max(0, Number(main?.imgFail || 0) - errors.length);
+    counts.image += unclassified;
+    return counts;
+  }
+
+  function coverApplicationFailureCount(summary = {}, uploadFailures = null) {
+    const cover = summary?.main?.cover || {};
+    if (!cover.requested || cover.graphql?.ok) return 0;
+    const counts = uploadFailures || mediaUploadFailureCounts(summary?.main);
+    const explicitCoverFailures = Number(summary?.mediaWarnings?.covers || 0) + Number(counts.cover || 0);
+    return explicitCoverFailures ? 0 : 1;
+  }
+
   function summarizeRunMessage(summary) {
     const elapsed = summary.elapsedMs ? `${(summary.elapsedMs / 1000).toFixed(1)}s` : "";
     const images = summary.images || {};
     const uploaded = Number(images.ok || 0);
-    const keptImages = Number(summary.mediaWarnings?.images || 0) + Number(summary.main?.imgFail || 0);
-    const keptTables = Number(summary.mediaWarnings?.tables || 0);
-    const uploadTimeouts = Number(summary.main?.imageErrors?.filter((error) => /upload took too long|timed out|timeout/i.test(error?.error || "")).length || 0);
-    if (uploadTimeouts) {
-      return `Article written${elapsed ? ` in ${elapsed}` : ""}. ${uploadTimeouts} image upload(s) timed out in X. Wait a moment, then write again or split the article if it has many images.`;
+    const uploadFailures = mediaUploadFailureCounts(summary.main);
+    const coverFailures = coverApplicationFailureCount(summary, uploadFailures);
+    const keptImages = Number(summary.mediaWarnings?.images || 0) + uploadFailures.image;
+    const keptTables = Number(summary.mediaWarnings?.tables || 0) + uploadFailures.table;
+    const missedCovers = Number(summary.mediaWarnings?.covers || 0) + uploadFailures.cover + coverFailures;
+    if (uploadFailures.timeout) {
+      return `Article written${elapsed ? ` in ${elapsed}` : ""}. ${uploadFailures.timeout} image upload(s) timed out in X. Wait a moment, then write again or split the article if it has many images.`;
     }
-    if (keptImages) {
-      return `Article written${elapsed ? ` in ${elapsed}` : ""}. ${keptImages} web image(s) stayed as Markdown links. Replace private or expired URLs with public links if they must upload.`;
-    }
-    if (keptTables) {
-      return `Article written${elapsed ? ` in ${elapsed}` : ""}. ${keptTables} table(s) stayed as Markdown.`;
+    if (keptImages || keptTables || missedCovers) {
+      const parts = [];
+      if (keptImages) parts.push(`${keptImages} body image(s) stayed as Markdown links`);
+      if (keptTables) parts.push(`${keptTables} table image(s) stayed as Markdown tables`);
+      if (missedCovers) parts.push(`${missedCovers} cover image(s) could not be applied`);
+      const recovery = keptImages
+        ? " Replace private or expired URLs with public links if they must upload."
+        : "";
+      return `Article written${elapsed ? ` in ${elapsed}` : ""}. ${parts.join("; ")}.${recovery}`;
     }
     if (uploaded) return "All web images uploaded.";
     return elapsed ? `Article written in ${elapsed}.` : "Article written.";
@@ -6511,7 +6890,7 @@
       setDraftDropStatus(
         latestParsed?.segments?.length ? "Markdown loaded" : "Ready for Markdown",
         latestParsed?.segments?.length
-          ? draftReadyDetail(els.markdown.value.length)
+          ? draftReadyDetail(draftText().length)
           : "Paste text or choose a .md file.",
         latestParsed?.segments?.length ? "done" : "idle"
       );
@@ -6622,7 +7001,7 @@
     if (!hasChromeApi()) return;
     window.clearTimeout(draftSaveTimer);
     draftSaveTimer = null;
-    chrome.storage.local.set({ [STORAGE_DRAFT]: els.markdown.value });
+    chrome.storage.local.set({ [STORAGE_DRAFT]: draftText() });
   }
 
   function scheduleSaveDraft() {
@@ -6660,7 +7039,7 @@
       const activeItem = draftQueue.find((item) => item.id === activeQueueItemId) || draftQueue[0];
       suppressNextTypedHistory = true;
       window.clearTimeout(draftInputHistoryTimer);
-      els.markdown.value = activeItem?.markdown || "";
+      setDraftText(activeItem?.markdown || "");
       analyzeDraft();
       renderDraftQueue();
       return;
@@ -6674,7 +7053,7 @@
       });
       return;
     }
-    els.markdown.value = "";
+    setDraftText("");
     analyzeDraft();
     syncDraftSurface();
   }
@@ -6685,7 +7064,7 @@
       if (areaName !== "local") return;
       if (changes[STORAGE_DRAFT]) {
         const nextDraft = String(changes[STORAGE_DRAFT].newValue || "");
-        if (!queueModeActive() && nextDraft !== els.markdown.value) {
+        if (!queueModeActive() && nextDraft !== draftText()) {
           setSingleDraftMarkdown(nextDraft, {
             source: "restored",
             statusTitle: "Markdown loaded",
@@ -6785,13 +7164,14 @@
     const checks = buildPreflightChecks();
     const gate = getImportGate(checks);
     const targetContext = payload?.targetContext || buildTargetContextEvidence();
-    const snapshot = markdownSnapshot(els.markdown.value || "");
+    const markdown = draftText();
+    const snapshot = markdownSnapshot(markdown);
     latestEvidence = {
       id: newRecordId(kind.replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "record"),
       kind,
       capturedAt: new Date().toISOString(),
       draftRecordId: activeDraftRecordId || null,
-      draftFingerprint: activeDraftFingerprint || draftFingerprint(els.markdown.value || ""),
+      draftFingerprint: activeDraftFingerprint || draftFingerprint(markdown),
       source: currentDraftRecord()?.source || null,
       draft: {
         title: latestParsed?.title || null,
@@ -6880,7 +7260,7 @@
     const imageOk = Number(summary?.images?.ok || 0);
     const imageFail = Number(summary?.images?.fail || 0);
     const uploadFail = Number(main?.imgFail || 0);
-    const warnings = Number(summary?.mediaWarnings?.total || 0) + uploadFail;
+    const warnings = Number(summary?.mediaWarnings?.total || 0) + uploadFail + coverApplicationFailureCount(summary);
     const target = evidence.targetContext || {};
     const pageStatus = evidence.pageStatus || {};
     const articleId = target.articleId || main?.title?.articleId || main?.cover?.articleId || previous?.articleId || null;
@@ -7992,26 +8372,17 @@
     handleExtensionEvent({ type: "xposter:event", event: event.detail?.event, payload: event.detail?.payload || {} });
   });
 
-  els.markdown.addEventListener("input", () => {
-    scheduleSaveDraft();
-    scheduleAnalyzeDraft();
-    syncActiveQueueWithDraft();
-    if (suppressNextTypedHistory) {
-      suppressNextTypedHistory = false;
+  els.markdown.addEventListener("input", () => handleDraftEditorInput());
+  els.markdown.addEventListener("paste", () => handleDraftEditorInput({ pasted: true }));
+  els.draftEditorToolbar?.addEventListener("click", (event) => {
+    const modeButton = event.target.closest("button[data-editor-mode]");
+    if (modeButton) {
+      setDraftEditorMode(modeButton.dataset.editorMode);
       return;
     }
-    scheduleDraftHistory("typed");
-  });
-  els.markdown.addEventListener("paste", () => {
-    suppressNextTypedHistory = true;
-    window.clearTimeout(draftInputHistoryTimer);
-    window.setTimeout(() => {
-      saveDraft();
-      analyzeDraftNow();
-      window.clearTimeout(draftInputHistoryTimer);
-      rememberDraftHistory("paste", { forceNew: true });
-      acknowledgeDraftInput();
-    }, 0);
+    const button = event.target.closest("button[data-editor-command]");
+    if (!button) return;
+    runDraftEditorCommand(button.dataset.editorCommand);
   });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") flushDraftSave();
@@ -8120,6 +8491,7 @@
     await runRunbookAction(button.dataset.recoveryAction);
   });
   getLiveResultItems().forEach((input) => input.addEventListener("change", saveLiveResultChecks));
+  setDraftEditorMode("edit");
   syncPanelLayout();
   installDraftStorageSync();
   installDraftDropTray();

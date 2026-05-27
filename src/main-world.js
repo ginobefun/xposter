@@ -512,6 +512,7 @@
     const blockMap = contentState.getBlockMap();
     const blockKey = findMarkerBlock(contentState, marker);
     if (!blockKey) return false;
+    if (!String(text || "")) return deleteBlockByKey(draftNode, blockKey).ok;
     const block = blockMap.get(blockKey);
     const characterFactory = block.getCharacterList().get(0)?.constructor;
     const character = characterFactory ? characterFactory.create({}) : null;
@@ -826,25 +827,14 @@
     return Boolean(graphResult.ok);
   }
 
-  function imageOperationMatchesSource(operation, source) {
-    return Boolean(source && operation?.op?.source && imageSourcesMatch(operation.op.source, source));
-  }
-
-  function coverPriorityForImageOperation(operation, coverSource) {
-    if (!coverSource) return 0;
-    if (operation?.op?.coverOnly) return 2;
-    return imageOperationMatchesSource(operation, coverSource) ? 1 : 0;
-  }
-
-  function orderImageOperationsForMetadata(imageOperations, coverSource) {
-    return imageOperations
-      .map((operation, index) => ({ operation, index, priority: coverPriorityForImageOperation(operation, coverSource) }))
-      .sort((left, right) => right.priority - left.priority || left.index - right.index)
-      .map((item) => item.operation);
-  }
-
   function uploadMatchesCover(upload, coverSource) {
     return Boolean(upload?.mediaId && coverSource && imageSourcesMatch(upload.source, coverSource));
+  }
+
+  function imageOperationKind(operation) {
+    if (operation?.op?.coverOnly) return "cover";
+    if (String(operation?.marker || "").includes("_TABLE_")) return "table";
+    return "image";
   }
 
   async function applyCoverMetadata(coverSource, articleId, upload, summary) {
@@ -931,10 +921,7 @@
     }
 
     const atomicOps = (payload.plan || []).filter((item) => item.op.type === "atomic");
-    const imageOps = orderImageOperationsForMetadata(
-      (payload.plan || []).filter((item) => item.op.type === "image"),
-      payload.cover
-    );
+    const imageOps = (payload.plan || []).filter((item) => item.op.type === "image");
 
     if (atomicOps.length) {
       throwIfCancelled();
@@ -978,13 +965,15 @@
           coverOnly: Boolean(op.op.coverOnly)
         });
         const upload = uploads[uploads.length - 1];
-        if (!coverUpload && uploadMatchesCover(upload, payload.cover)) {
+        if (upload.coverOnly && !coverUpload) coverUpload = upload;
+        if (uploadMatchesCover(upload, payload.cover) && !summary.cover.graphql && !summary.cover.skippedReason) {
           coverUpload = upload;
           await applyCoverMetadata(payload.cover, articleId, upload, summary);
         }
       } else {
         summary.imgFail += 1;
         summary.imageErrors.push({
+          kind: imageOperationKind(op),
           index: index + 1,
           marker: op.marker,
           source: op.op.source || null,
@@ -1015,7 +1004,7 @@
         summary.cover.skippedReason = "Cover source was not uploaded; it may have stayed as a Markdown link";
         console.info(LOG, "cover skipped because the source was not uploaded", payload.cover);
       }
-      if (summary.cover.graphql?.ok && coverUpload?.blockKey) {
+      if (coverUpload?.coverOnly && coverUpload.blockKey) {
         await sleep(600);
         draftNode = findDraftStateNode() || draftNode;
         const deleteResult = deleteBlockByKey(draftNode, coverUpload.blockKey);
