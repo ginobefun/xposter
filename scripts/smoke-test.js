@@ -691,8 +691,14 @@ assert.ok(
     sidepanelHtml.includes('<option value="ja">日本語</option>') &&
     sidepanelHtml.includes('<option value="fr">Français</option>') &&
     sidepanelHtml.includes('<option value="ru">Русский</option>') &&
+    sidepanelHtml.includes('id="languageSelectButton"') &&
+    sidepanelHtml.includes('id="languageOptionsList"') &&
     sidepanelText.includes("function populateLanguageSelect") &&
+    sidepanelText.includes("function languageOptionLabel") &&
+    sidepanelText.includes("function handleLanguageOptionsKeydown") &&
     sidepanelText.includes("i18n.languageOptions()") &&
+    sidepanelCss.includes(".language-option") &&
+    sidepanelCss.includes("text-align: center;") &&
     sidepanelText.includes("window.xPosterSidepanelMessages?.register?.(i18n, shared") &&
     sidepanelMessagesText.includes("window.xPosterSidepanelMessages = { register }") &&
     sidepanelText.includes("const sidepanelPatterns = window.xPosterSidepanelPatterns") &&
@@ -954,8 +960,10 @@ assert.ok(
       ".draft-syntax-highlight",
       "pointer-events: none;",
       "#markdown {\n  position: relative;\n  z-index: 1;",
-      "color: transparent;",
+      "color: var(--ink);",
       "caret-color: var(--ink);",
+      ".draft-syntax-highlight {\n  position: absolute;\n  inset: 0;\n  color:",
+      "display: none;",
       ".draft-token-heading",
       ".draft-token-image",
       ".draft-token-code",
@@ -984,7 +992,9 @@ assert.ok(
       ".composer {\n  position: relative;\n  min-height: 0;",
       ".composer {\n  position: relative;\n  height: 100%;\n  min-height: 0;\n  align-self: stretch;\n  align-content: start;",
       "grid-template-rows: auto auto auto auto;",
-      ".draft-editor-status span {\n"
+      ".draft-editor-status span {\n",
+      "#markdown {\n  position: relative;\n  z-index: 1;\n  color: transparent;",
+      ".record-edit-dialog textarea {\n  position: relative;\n  z-index: 1;\n  color: transparent;"
     ]) &&
     excludesAll(sidepanelCss, [
       "font-family: ui-serif, Georgia, \"Times New Roman\", serif;"

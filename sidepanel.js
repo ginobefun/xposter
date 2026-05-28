@@ -139,7 +139,11 @@
     copyEvidence: document.getElementById("copyEvidence"),
     copyEvidencePackage: document.getElementById("copyEvidencePackage"),
     downloadEvidencePackage: document.getElementById("downloadEvidencePackage"),
+    languageControl: document.getElementById("languageControl"),
     languageSelect: document.getElementById("languageSelect"),
+    languageSelectButton: document.getElementById("languageSelectButton"),
+    languageSelectValue: document.getElementById("languageSelectValue"),
+    languageOptionsList: document.getElementById("languageOptionsList"),
     themeChoice: document.getElementById("themeChoice"),
     metadataOptions: document.getElementById("metadataOptions"),
     importTitleOption: document.getElementById("importTitleOption"),
@@ -1327,17 +1331,105 @@
     return window.setTimeout(callback, 0);
   }
 
+  function languageOptionLabel(option) {
+    if (!option) return "";
+    return option.code === "auto" ? localizeText("Automatic") : option.nativeName;
+  }
+
+  function closeLanguageMenu({ focusButton = false } = {}) {
+    if (!els.languageOptionsList || !els.languageSelectButton) return;
+    els.languageOptionsList.hidden = true;
+    els.languageSelectButton.setAttribute("aria-expanded", "false");
+    if (focusButton) els.languageSelectButton.focus();
+  }
+
+  function syncLanguageButton() {
+    if (!els.languageSelect || !els.languageSelectValue || !els.languageOptionsList) return;
+    const value = els.languageSelect.value;
+    const selectedOption = els.languageSelect.selectedOptions?.[0];
+    const selectedLabel = selectedOption?.textContent || languageOptionLabel(i18n?.languageOptions?.().find((option) => option.code === value)) || value;
+    els.languageSelectValue.textContent = selectedLabel;
+    els.languageOptionsList.querySelectorAll("[data-language-option]").forEach((button) => {
+      const selected = button.dataset.languageOption === value;
+      button.setAttribute("aria-selected", selected ? "true" : "false");
+      button.tabIndex = selected ? 0 : -1;
+    });
+  }
+
+  function openLanguageMenu() {
+    if (!els.languageOptionsList || !els.languageSelectButton) return;
+    els.languageOptionsList.hidden = false;
+    els.languageSelectButton.setAttribute("aria-expanded", "true");
+    syncLanguageButton();
+    const selected = els.languageOptionsList.querySelector('[aria-selected="true"]');
+    selected?.focus?.();
+  }
+
+  function toggleLanguageMenu() {
+    if (!els.languageOptionsList) return;
+    if (els.languageOptionsList.hidden) openLanguageMenu();
+    else closeLanguageMenu({ focusButton: true });
+  }
+
+  function focusLanguageOption(delta) {
+    if (!els.languageOptionsList || els.languageOptionsList.hidden) return;
+    const options = Array.from(els.languageOptionsList.querySelectorAll("[data-language-option]"));
+    if (!options.length) return;
+    const currentIndex = Math.max(0, options.indexOf(document.activeElement));
+    const nextIndex = (currentIndex + delta + options.length) % options.length;
+    options.forEach((option, index) => {
+      option.tabIndex = index === nextIndex ? 0 : -1;
+    });
+    options[nextIndex].focus();
+  }
+
+  function handleLanguageButtonKeydown(event) {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    openLanguageMenu();
+    if (event.key === "ArrowUp") focusLanguageOption(-1);
+  }
+
+  function handleLanguageOptionsKeydown(event) {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      focusLanguageOption(event.key === "ArrowDown" ? 1 : -1);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeLanguageMenu({ focusButton: true });
+      return;
+    }
+    if (event.key === "Enter" || event.key === " ") {
+      const option = event.target.closest?.("[data-language-option]");
+      if (!option) return;
+      event.preventDefault();
+      setLanguage(option.dataset.languageOption);
+      closeLanguageMenu({ focusButton: true });
+    }
+  }
+
   function populateLanguageSelect() {
     if (!els.languageSelect || !i18n?.languageOptions) return;
-    els.languageSelect.innerHTML = i18n.languageOptions()
+    const options = i18n.languageOptions();
+    els.languageSelect.innerHTML = options
       .map((option) => {
-        const label = option.code === "auto"
-          ? localizeText("Automatic")
-          : option.nativeName;
+        const label = languageOptionLabel(option);
         return `<option value="${shared.escapeHtml(option.code)}">${shared.escapeHtml(label)}</option>`;
       })
       .join("");
     els.languageSelect.value = i18n.preference?.() || currentLanguage;
+    if (els.languageOptionsList) {
+      els.languageOptionsList.innerHTML = options
+        .map((option) => {
+          const label = shared.escapeHtml(languageOptionLabel(option));
+          const value = shared.escapeHtml(option.code);
+          return `<button class="language-option" type="button" role="option" data-language-option="${value}" aria-selected="false" tabindex="-1">${label}</button>`;
+        })
+        .join("");
+    }
+    syncLanguageButton();
   }
 
   function setLocalizedText(node, source) {
@@ -7273,6 +7365,19 @@
   });
   els.languageSelect?.addEventListener("change", () => {
     setLanguage(els.languageSelect.value);
+  });
+  els.languageSelectButton?.addEventListener("click", toggleLanguageMenu);
+  els.languageSelectButton?.addEventListener("keydown", handleLanguageButtonKeydown);
+  els.languageOptionsList?.addEventListener("click", (event) => {
+    const option = event.target.closest("[data-language-option]");
+    if (!option) return;
+    setLanguage(option.dataset.languageOption);
+    closeLanguageMenu({ focusButton: true });
+  });
+  els.languageOptionsList?.addEventListener("keydown", handleLanguageOptionsKeydown);
+  document.addEventListener("click", (event) => {
+    if (els.languageControl?.contains(event.target)) return;
+    closeLanguageMenu();
   });
   els.themeChoice?.addEventListener("change", (event) => {
     const input = event.target.closest('input[name="themeMode"]');

@@ -157,6 +157,7 @@ button {
 }
 
 .language-control {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -165,9 +166,22 @@ button {
   font-weight: 760;
 }
 
-.language-control select {
+.language-native-select {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.language-select-button {
   height: 28px;
   max-width: 108px;
+  display: inline-grid;
+  grid-template-columns: minmax(0, 1fr) 12px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 10px;
   border: 1px solid var(--line);
   border-radius: 0;
   background: color-mix(in oklch, var(--paper), var(--paper-2) 35%);
@@ -175,6 +189,71 @@ button {
   font: inherit;
   font-size: 12px;
   font-weight: 700;
+  cursor: pointer;
+}
+
+.language-select-button svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.language-select-value {
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.language-options {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 5px);
+  right: 0;
+  width: 138px;
+  max-height: min(312px, calc(100dvh - 96px));
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid color-mix(in oklch, var(--line), var(--ink) 8%);
+  background: var(--paper);
+  box-shadow: 0 12px 26px rgba(15, 20, 25, 0.14);
+}
+
+.language-options[hidden] {
+  display: none;
+}
+
+.language-option {
+  width: 100%;
+  min-height: 30px;
+  display: block;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 740;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.language-option:hover,
+.language-option:focus-visible {
+  outline: 0;
+  background: color-mix(in oklch, var(--signal), var(--paper) 91%);
+  color: var(--signal-text);
+}
+
+.language-option[aria-selected="true"] {
+  background: color-mix(in oklch, var(--signal), var(--paper) 86%);
+  color: var(--signal-text);
 }
 
 .eyebrow {
@@ -1241,6 +1320,7 @@ h2 {
   position: absolute;
   inset: 0;
   color: color-mix(in oklch, var(--ink), var(--muted) 7%);
+  display: none;
   margin: 0;
   pointer-events: none;
   scrollbar-width: none;
@@ -1253,7 +1333,7 @@ h2 {
 #markdown {
   position: relative;
   z-index: 1;
-  color: transparent;
+  color: var(--ink);
   caret-color: var(--ink);
   resize: none;
   transition:
@@ -1270,7 +1350,7 @@ h2 {
 
 #markdown::selection {
   background: color-mix(in oklch, var(--signal), transparent 78%);
-  color: transparent;
+  color: var(--ink);
 }
 
 .draft-token-heading {
@@ -4092,6 +4172,7 @@ textarea:focus-visible,
 .record-edit-highlight {
   position: absolute;
   inset: 0;
+  display: none;
   margin: 0;
   color: color-mix(in oklch, var(--ink), var(--muted) 7%);
   pointer-events: none;
@@ -4105,7 +4186,7 @@ textarea:focus-visible,
 .record-edit-dialog textarea {
   position: relative;
   z-index: 1;
-  color: transparent;
+  color: var(--ink);
   caret-color: var(--ink);
   outline: 0;
   overscroll-behavior: contain;
@@ -4113,7 +4194,7 @@ textarea:focus-visible,
 
 .record-edit-dialog textarea::selection {
   background: color-mix(in oklch, var(--signal), transparent 78%);
-  color: transparent;
+  color: var(--ink);
 }
 
 .record-edit-input-wrap:focus-within {
@@ -4675,12 +4756,9 @@ textarea:focus-visible,
   display: none;
 }
 
-.setting-row .language-control select {
+.setting-row .language-select-button {
   width: 138px;
   max-width: 138px;
-  padding: 0 26px 0 14px;
-  text-align: center;
-  text-align-last: center;
 }
 
 .setting-row-language {
@@ -5120,7 +5198,8 @@ textarea:focus-visible,
     flex: 0 0 auto;
   }
 
-  .setting-row-language .language-control select {
+  .setting-row-language .language-select-button,
+  .setting-row-language .language-options {
     width: 132px;
     max-width: 132px;
   }
@@ -5287,10 +5366,13 @@ textarea:focus-visible,
 }
 
 @media (pointer: coarse) {
-  .language-control select {
+  .language-select-button {
     height: 44px;
     max-width: none;
-    padding-inline: 10px;
+  }
+
+  .language-option {
+    min-height: 38px;
   }
 
   .draft-editor-toolbar button,

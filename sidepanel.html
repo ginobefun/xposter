@@ -791,9 +791,9 @@
             <strong data-i18n="Language">Language</strong>
             <span data-i18n="Choose the side panel language.">Choose the side panel language.</span>
           </div>
-          <label class="language-control" for="languageSelect">
+          <div class="language-control" id="languageControl">
             <span data-i18n="Language">Language</span>
-            <select id="languageSelect" aria-label="Language" data-i18n-aria-label="Language">
+            <select class="language-native-select" id="languageSelect" aria-label="Language" data-i18n-aria-label="Language" aria-hidden="true" tabindex="-1">
               <option value="auto">Automatic</option>
               <option value="en">English</option>
               <option value="zh">中文</option>
@@ -806,7 +806,12 @@
               <option value="pt">Português</option>
               <option value="ko">한국어</option>
             </select>
-          </label>
+            <button class="language-select-button" id="languageSelectButton" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="languageOptionsList" aria-label="Language" data-i18n-aria-label="Language">
+              <span class="language-select-value" id="languageSelectValue">Automatic</span>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+            </button>
+            <div class="language-options" id="languageOptionsList" role="listbox" aria-label="Language" data-i18n-aria-label="Language" hidden></div>
+          </div>
         </div>
         <div class="setting-row">
           <div>
