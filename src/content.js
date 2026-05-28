@@ -9,6 +9,8 @@
   const ARTICLE_EXPORT_STYLE_ID = "__xposter_article_export_style__";
   const SUCCESS_CELEBRATION_ID = "__xposter_success_celebration__";
   const SUCCESS_CELEBRATION_STYLE_ID = "__xposter_success_celebration_style__";
+  const SUCCESS_CELEBRATION_DURATION_MS = 3200;
+  const SUCCESS_CELEBRATION_PIECE_COUNT = 72;
   const SIDEPANEL_DRAFT_STORAGE_KEY = "xposter_sidepanel_draft";
   const PENDING_ARTICLE_IMPORT_STORAGE_KEY = "xposter_pending_article_import";
   const ARTICLE_EXPORT_SETTINGS_STORAGE_KEY = "xposter_article_export_settings";
@@ -86,6 +88,11 @@
     "Insert image at cursor": "在光标处插入图片",
     "Hold Option/Alt and release over the article body.": "按住 Option/Alt，并在正文区域松开。",
     "Write Markdown here": "在这里写入 Markdown",
+    Article: "文章",
+    Queue: "队列",
+    "Side panel": "侧边栏",
+    Folder: "文件夹",
+    Image: "图片",
     "Release over the editor to write into this article.": "在编辑器上松开，即可写入这篇文章。",
     "Adding drafts...": "正在添加草稿...",
     "Saving Markdown drafts to the side panel.": "正在把 Markdown 草稿保存到侧边栏。",
@@ -753,6 +760,9 @@
       #${SUCCESS_CELEBRATION_ID} {
         position: fixed;
         inset: 0;
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
         z-index: 2147483646;
         pointer-events: none;
         overflow: hidden;
@@ -760,8 +770,9 @@
       }
       #${SUCCESS_CELEBRATION_ID} .__xposter_success_mark {
         position: absolute;
-        left: 50%;
-        top: 24%;
+        left: 50vw;
+        top: 42vh;
+        top: 42dvh;
         width: 88px;
         height: 88px;
         border: 1px solid rgba(29, 155, 240, 0.28);
@@ -772,7 +783,7 @@
         color: #00ba7c;
         box-shadow: 0 18px 42px rgba(15, 20, 25, 0.16);
         transform: translate3d(-50%, -50%, 0) scale(0.92);
-        animation: __xposter_success_mark 720ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        animation: __xposter_success_mark 1800ms cubic-bezier(0.22, 1, 0.36, 1) both;
       }
       #${SUCCESS_CELEBRATION_ID} .__xposter_success_mark svg {
         width: 38px;
@@ -781,20 +792,23 @@
       }
       #${SUCCESS_CELEBRATION_ID} .__xposter_success_piece {
         position: absolute;
-        left: 50%;
-        top: 24%;
-        width: 7px;
-        height: 13px;
-        border-radius: 2px;
+        left: var(--__xposter-success-start-x, 50vw);
+        top: var(--__xposter-success-start-y, 50vh);
+        width: var(--__xposter-success-width, 7px);
+        height: var(--__xposter-success-height, 13px);
+        border-radius: var(--__xposter-success-radius, 2px);
         background: var(--__xposter-success-piece, #1d9bf0);
         opacity: 0;
         transform: translate3d(-50%, -50%, 0) rotate(var(--__xposter-success-angle, 0deg));
-        animation: __xposter_success_piece 760ms cubic-bezier(0.16, 1, 0.3, 1) both;
+        transform-origin: center;
+        will-change: transform, opacity;
+        animation: __xposter_success_piece 2600ms cubic-bezier(0.16, 1, 0.3, 1) both;
         animation-delay: var(--__xposter-success-delay, 0ms);
       }
       @keyframes __xposter_success_mark {
         0% { opacity: 0; transform: translate3d(-50%, -50%, 0) scale(0.92); }
-        28% { opacity: 1; transform: translate3d(-50%, -50%, 0) scale(1); }
+        18% { opacity: 1; transform: translate3d(-50%, -50%, 0) scale(1); }
+        72% { opacity: 1; transform: translate3d(-50%, -54%, 0) scale(1); }
         100% { opacity: 0; transform: translate3d(-50%, -72%, 0) scale(0.98); }
       }
       @keyframes __xposter_success_piece {
@@ -802,7 +816,8 @@
           opacity: 0;
           transform: translate3d(-50%, -50%, 0) rotate(var(--__xposter-success-angle, 0deg)) scale(0.72);
         }
-        16% { opacity: 1; }
+        10% { opacity: 1; }
+        72% { opacity: 0.88; }
         100% {
           opacity: 0;
           transform:
@@ -812,7 +827,7 @@
               0
             )
             rotate(calc(var(--__xposter-success-angle, 0deg) + 120deg))
-            scale(0.92);
+            scale(var(--__xposter-success-scale, 0.92));
         }
       }
       @media (prefers-color-scheme: dark) {
@@ -849,21 +864,31 @@
     root.appendChild(mark);
     if (!prefersReducedMotion()) {
       const palette = colors.length ? colors : ["#0f1419", "#536471", "#1d9bf0", "#00ba7c", "#cfd9de"];
-      for (let index = 0; index < 20; index += 1) {
+      for (let index = 0; index < SUCCESS_CELEBRATION_PIECE_COUNT; index += 1) {
         const piece = document.createElement("span");
-        const side = index % 2 === 0 ? -1 : 1;
-        const distance = 76 + (index % 5) * 18;
+        const startX = 6 + ((index * 17) % 89);
+        const startY = 6 + ((index * 29) % 82);
+        const driftX = ((index * 37) % 39) - 19;
+        const driftY = ((index * 31) % 55) - 18;
+        const width = 5 + (index % 4);
+        const height = index % 5 === 0 ? width : 10 + (index % 5) * 2;
         piece.className = "__xposter_success_piece";
         piece.style.setProperty("--__xposter-success-piece", palette[index % palette.length]);
-        piece.style.setProperty("--__xposter-success-x", `${side * (distance + index * 2)}px`);
-        piece.style.setProperty("--__xposter-success-y", `${-88 - (index % 6) * 14}px`);
+        piece.style.setProperty("--__xposter-success-start-x", `${startX}vw`);
+        piece.style.setProperty("--__xposter-success-start-y", `${startY}vh`);
+        piece.style.setProperty("--__xposter-success-x", `${driftX}vw`);
+        piece.style.setProperty("--__xposter-success-y", `${driftY}vh`);
+        piece.style.setProperty("--__xposter-success-width", `${width}px`);
+        piece.style.setProperty("--__xposter-success-height", `${height}px`);
+        piece.style.setProperty("--__xposter-success-radius", index % 5 === 0 ? "999px" : "2px");
+        piece.style.setProperty("--__xposter-success-scale", `${0.72 + (index % 4) * 0.08}`);
         piece.style.setProperty("--__xposter-success-angle", `${index * 23}deg`);
-        piece.style.setProperty("--__xposter-success-delay", `${index * 11}ms`);
+        piece.style.setProperty("--__xposter-success-delay", `${(index % 18) * 22}ms`);
         root.appendChild(piece);
       }
     }
     document.body.appendChild(root);
-    window.setTimeout(() => root.remove(), 1100);
+    window.setTimeout(() => root.remove(), SUCCESS_CELEBRATION_DURATION_MS);
   }
 
   function broadcast(payload) {
@@ -1084,6 +1109,7 @@
   async function importMarkdown(markdown, origin = "manual", options = {}) {
     if (state.busy) return { ok: false, error: "Import already running" };
     const importOptions = normalizeImportOptions(options);
+    const forceNewArticle = Boolean(options.forceNewArticle);
     state.busy = true;
     state.cancelRequested = false;
     state.currentMarkdown = markdown;
@@ -1092,8 +1118,8 @@
     try {
       throwIfImportCancelled();
       if (!isArticleRoute()) throw new Error("Open X Articles first");
-      if (origin !== "paste" && !findEditor()) {
-        await ensureEditorReadyForFileImport();
+      if (origin !== "paste" && (forceNewArticle || !findEditor())) {
+        await ensureEditorReadyForFileImport({ forceNew: forceNewArticle });
       }
       throwIfImportCancelled();
       const parsed = shared.parseMarkdown(markdown, importOptions);
@@ -1261,25 +1287,112 @@
       document.getElementById("__xposter_vault_prompt__")?.remove();
       const overlay = document.createElement("div");
       overlay.id = "__xposter_vault_prompt__";
-      overlay.style.cssText = [
-        "position:fixed",
-        "inset:0",
-        "z-index:2147483646",
-        "display:grid",
-        "place-items:center",
-        "background:rgba(32,31,27,.48)",
-        "font:14px/1.55 ui-sans-serif,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif"
-      ].join(";");
+      overlay.dataset.theme = statusThemeFromPage();
+      overlay.innerHTML = `
+        <style>
+          #__xposter_vault_prompt__ {
+            --__xposter-vault-paper: #ffffff;
+            --__xposter-vault-paper-2: #f7f9f9;
+            --__xposter-vault-ink: #0f1419;
+            --__xposter-vault-muted: #536471;
+            --__xposter-vault-line: #cfd9de;
+            --__xposter-vault-signal: #1d9bf0;
+            --__xposter-vault-button: #0f1419;
+            --__xposter-vault-button-ink: #ffffff;
+            position: fixed;
+            inset: 0;
+            z-index: 2147483646;
+            display: grid;
+            place-items: center;
+            padding: 20px;
+            background: rgba(15, 20, 25, 0.44);
+            color: var(--__xposter-vault-ink);
+            font: 14px/1.55 ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;
+            letter-spacing: 0;
+          }
+          #__xposter_vault_prompt__[data-theme="dark"] {
+            --__xposter-vault-paper: #121a22;
+            --__xposter-vault-paper-2: #1a2630;
+            --__xposter-vault-ink: #d6dee6;
+            --__xposter-vault-muted: #8b99a6;
+            --__xposter-vault-line: #33414d;
+            --__xposter-vault-signal: #66a9d8;
+            --__xposter-vault-button: #d7dee5;
+            --__xposter-vault-button-ink: #111820;
+            background: rgba(0, 0, 0, 0.58);
+          }
+          #__xposter_vault_prompt__ .__xposter_vault_panel {
+            width: min(440px, calc(100vw - 40px));
+            padding: 20px;
+            border: 1px solid var(--__xposter-vault-line);
+            background: var(--__xposter-vault-paper);
+            box-shadow: 0 22px 60px rgba(15, 20, 25, 0.22);
+          }
+          #__xposter_vault_prompt__[data-theme="dark"] .__xposter_vault_panel {
+            box-shadow: 0 24px 66px rgba(0, 0, 0, 0.38);
+          }
+          #__xposter_vault_prompt__ .__xposter_vault_title {
+            margin: 0 0 5px;
+            font-size: 17px;
+            font-weight: 780;
+            line-height: 1.25;
+          }
+          #__xposter_vault_prompt__ .__xposter_vault_detail {
+            margin: 0 0 14px;
+            color: var(--__xposter-vault-muted);
+          }
+          #__xposter_vault_prompt__ .__xposter_vault_note {
+            margin-bottom: 16px;
+            padding: 10px 12px;
+            border: 1px solid color-mix(in oklch, var(--__xposter-vault-line), transparent 18%);
+            background: color-mix(in oklch, var(--__xposter-vault-paper-2), var(--__xposter-vault-paper) 38%);
+            color: var(--__xposter-vault-muted);
+            font-size: 12px;
+          }
+          #__xposter_vault_prompt__ code {
+            color: var(--__xposter-vault-ink);
+            font: 11.5px/1.3 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          }
+          #__xposter_vault_prompt__ .__xposter_vault_actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+          }
+          #__xposter_vault_prompt__ button {
+            min-height: 36px;
+            border: 0;
+            padding: 0 13px;
+            font: inherit;
+            font-size: 13px;
+            font-weight: 760;
+            cursor: pointer;
+          }
+          #__xposter_vault_prompt__ .__xposter_vault_skip {
+            border: 1px solid var(--__xposter-vault-line);
+            background: var(--__xposter-vault-paper);
+            color: var(--__xposter-vault-ink);
+          }
+          #__xposter_vault_prompt__ .__xposter_vault_pick {
+            background: var(--__xposter-vault-button);
+            color: var(--__xposter-vault-button-ink);
+          }
+          #__xposter_vault_prompt__ button:hover {
+            filter: brightness(0.98);
+          }
+          #__xposter_vault_prompt__ button:focus-visible {
+            outline: 2px solid color-mix(in oklch, var(--__xposter-vault-signal), transparent 24%);
+            outline-offset: 2px;
+          }
+          @media (prefers-reduced-motion: reduce) {
+            #__xposter_vault_prompt__ button {
+              transition: none;
+            }
+          }
+        </style>
+      `;
 
       const panel = document.createElement("div");
-      panel.style.cssText = [
-        "width:min(440px,calc(100vw - 40px))",
-        "background:#fbfaf7",
-        "color:#201f1b",
-        "border:1px solid #d8d2c6",
-        "box-shadow:0 22px 60px rgba(32,31,27,.28)",
-        "padding:22px"
-      ].join(";");
+      panel.className = "__xposter_vault_panel";
       const title = translateContentText("Local image folder");
       const detail = translateContentText(
         count ? `${count} local image(s) need a root folder.` : "Choose the folder that contains your Markdown images."
@@ -1291,14 +1404,14 @@
       const skipLabel = translateContentText("Skip");
       const chooseLabel = translateContentText("Choose folder");
       panel.innerHTML = `
-        <div style="font-size:17px;font-weight:760;margin-bottom:6px;">${shared.escapeHtml(title)}</div>
-        <div style="color:#6b665e;margin-bottom:14px;">${shared.escapeHtml(detail)}</div>
-        <div style="background:#f4f0e8;border:1px solid #d8d2c6;padding:10px 12px;color:#6b665e;font-size:12px;margin-bottom:16px;">
+        <div class="__xposter_vault_title">${shared.escapeHtml(title)}</div>
+        <div class="__xposter_vault_detail">${shared.escapeHtml(detail)}</div>
+        <div class="__xposter_vault_note">
           ${shared.escapeHtml(helpStart)} <code>![](./img/cover.png)</code>${helpJoiner}${shared.escapeHtml(helpMiddle)} <code>img</code> ${shared.escapeHtml(helpEnd)}
         </div>
-        <div style="display:flex;justify-content:flex-end;gap:8px;">
-          <button id="xposter-vault-skip" style="height:36px;padding:0 13px;border:1px solid #d8d2c6;background:#fbfaf7;color:#201f1b;font:inherit;font-weight:700;cursor:pointer;">${shared.escapeHtml(skipLabel)}</button>
-          <button id="xposter-vault-pick" style="height:36px;padding:0 14px;border:0;background:#2f6f68;color:#fbfaf7;font:inherit;font-weight:760;cursor:pointer;">${shared.escapeHtml(chooseLabel)}</button>
+        <div class="__xposter_vault_actions">
+          <button id="xposter-vault-skip" class="__xposter_vault_skip" type="button">${shared.escapeHtml(skipLabel)}</button>
+          <button id="xposter-vault-pick" class="__xposter_vault_pick" type="button">${shared.escapeHtml(chooseLabel)}</button>
         </div>
       `;
       overlay.appendChild(panel);
@@ -1988,8 +2101,8 @@
     }
   }
 
-  async function ensureEditorReadyForFileImport() {
-    if (isEditorRoute() && findEditor()) return;
+  async function ensureEditorReadyForFileImport({ forceNew = false } = {}) {
+    if (!forceNew && isEditorRoute() && findEditor()) return;
     if (isEditorRoute()) await navigateToArticleList();
     if (!isArticleRoute()) {
       history.pushState(null, "", "/compose/articles");
@@ -2570,6 +2683,13 @@
     style.id = ARTICLE_EXPORT_STYLE_ID;
     style.textContent = `
       #${ARTICLE_EXPORT_ID} {
+        --__xposter-export-paper: #ffffff;
+        --__xposter-export-paper-2: #f7f9f9;
+        --__xposter-export-ink: #0f1419;
+        --__xposter-export-muted: #536471;
+        --__xposter-export-line: #cfd9de;
+        --__xposter-export-signal: #1d9bf0;
+        --__xposter-export-danger: #f4212e;
         position: fixed;
         right: var(--__xposter-article-export-inline-end, 24px);
         bottom: 24px;
@@ -2577,12 +2697,11 @@
         display: inline-flex;
         align-items: center;
         min-height: 38px;
-        border: 1px solid rgba(83, 100, 113, 0.22);
-        border-radius: 10px;
-        background: rgba(255, 255, 255, 0.92);
-        color: #0f1419;
-        box-shadow: 0 12px 34px rgba(15, 20, 25, 0.14);
-        opacity: 0.74;
+        border: 1px solid var(--__xposter-export-line);
+        background: var(--__xposter-export-paper);
+        color: var(--__xposter-export-ink);
+        box-shadow: 0 8px 22px rgba(15, 20, 25, 0.10);
+        opacity: 0.86;
         transform: translateZ(0);
         transform-origin: 100% 100%;
         transition:
@@ -2593,7 +2712,6 @@
           transform 160ms cubic-bezier(0.25, 1, 0.5, 1);
         font: 12px/1 ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;
         letter-spacing: 0;
-        backdrop-filter: blur(14px) saturate(1.08);
       }
       #${ARTICLE_EXPORT_ID}[data-motion="entered"] {
         animation: __xposter_article_export_in 260ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -2601,19 +2719,19 @@
       #${ARTICLE_EXPORT_ID}:hover,
       #${ARTICLE_EXPORT_ID}:focus-within {
         opacity: 1;
-        border-color: rgba(83, 100, 113, 0.42);
-        background: rgba(255, 255, 255, 0.98);
-        box-shadow: 0 16px 42px rgba(15, 20, 25, 0.18);
-        transform: translate3d(0, -2px, 0);
+        border-color: color-mix(in oklch, var(--__xposter-export-line), var(--__xposter-export-ink) 28%);
+        background: color-mix(in oklch, var(--__xposter-export-paper-2), var(--__xposter-export-paper) 54%);
+        box-shadow: 0 12px 28px rgba(15, 20, 25, 0.13);
+        transform: translate3d(0, -1px, 0);
       }
       #${ARTICLE_EXPORT_ID}[data-feedback="done"],
       #${ARTICLE_EXPORT_ID}[data-feedback="mode"] {
-        border-color: rgba(29, 155, 240, 0.42);
+        border-color: color-mix(in oklch, var(--__xposter-export-signal), var(--__xposter-export-line) 30%);
         animation: __xposter_article_export_confirm 420ms cubic-bezier(0.22, 1, 0.36, 1);
       }
       #${ARTICLE_EXPORT_ID}[data-feedback="warn"],
       #${ARTICLE_EXPORT_ID}[data-feedback="error"] {
-        border-color: rgba(244, 33, 46, 0.42);
+        border-color: color-mix(in oklch, var(--__xposter-export-danger), var(--__xposter-export-line) 28%);
         animation: __xposter_article_export_confirm 420ms cubic-bezier(0.22, 1, 0.36, 1);
       }
       #${ARTICLE_EXPORT_ID} button {
@@ -2639,8 +2757,7 @@
       #${ARTICLE_EXPORT_ID} .__xposter_article_export_toggle {
         width: 30px;
         min-height: 36px;
-        border-left: 1px solid rgba(83, 100, 113, 0.18);
-        border-radius: 0 10px 10px 0;
+        border-left: 1px solid color-mix(in oklch, var(--__xposter-export-line), transparent 20%);
         transform-origin: 50% 50%;
         font-size: 12px;
       }
@@ -2655,10 +2772,9 @@
         display: grid;
         gap: 2px;
         padding: 6px;
-        border: 1px solid rgba(83, 100, 113, 0.22);
-        border-radius: 10px;
-        background: rgba(255, 255, 255, 0.98);
-        box-shadow: 0 14px 36px rgba(15, 20, 25, 0.16);
+        border: 1px solid var(--__xposter-export-line);
+        background: var(--__xposter-export-paper);
+        box-shadow: 0 12px 30px rgba(15, 20, 25, 0.13);
         transform-origin: 100% 100%;
         animation: __xposter_article_export_menu_in 160ms cubic-bezier(0.22, 1, 0.36, 1);
       }
@@ -2670,18 +2786,17 @@
         justify-content: space-between;
         gap: 12px;
         padding: 8px 9px;
-        border-radius: 6px;
         text-align: left;
       }
       #${ARTICLE_EXPORT_ID} .__xposter_article_export_menu button:hover,
       #${ARTICLE_EXPORT_ID} .__xposter_article_export_menu button:focus-visible {
         outline: none;
-        background: rgba(15, 20, 25, 0.06);
+        background: var(--__xposter-export-paper-2);
         transform: translateX(1px);
       }
       #${ARTICLE_EXPORT_ID} .__xposter_article_export_menu button[aria-checked="true"]::after {
         content: "✓";
-        color: #536471;
+        color: var(--__xposter-export-muted);
       }
       @keyframes __xposter_article_export_in {
         from {
@@ -2689,7 +2804,7 @@
           transform: translate3d(0, 6px, 0) scale(0.985);
         }
         to {
-          opacity: 0.74;
+          opacity: 0.86;
           transform: translate3d(0, 0, 0) scale(1);
         }
       }
@@ -2716,26 +2831,25 @@
       }
       @media (prefers-color-scheme: dark) {
         #${ARTICLE_EXPORT_ID} {
-          background: rgba(22, 24, 28, 0.92);
-          border-color: rgba(231, 233, 234, 0.18);
-          color: #e7e9ea;
-          box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32);
+          --__xposter-export-paper: #121a22;
+          --__xposter-export-paper-2: #1a2630;
+          --__xposter-export-ink: #d6dee6;
+          --__xposter-export-muted: #8b99a6;
+          --__xposter-export-line: #33414d;
+          --__xposter-export-signal: #66a9d8;
+          --__xposter-export-danger: #ef7d86;
+          box-shadow: 0 12px 34px rgba(0, 0, 0, 0.30);
         }
         #${ARTICLE_EXPORT_ID}:hover,
         #${ARTICLE_EXPORT_ID}:focus-within {
-          background: rgba(22, 24, 28, 0.98);
-        }
-        #${ARTICLE_EXPORT_ID} .__xposter_article_export_toggle {
-          border-left-color: rgba(231, 233, 234, 0.16);
+          background: var(--__xposter-export-paper-2);
         }
         #${ARTICLE_EXPORT_ID} .__xposter_article_export_menu {
-          background: rgba(22, 24, 28, 0.98);
-          border-color: rgba(231, 233, 234, 0.18);
           box-shadow: 0 14px 36px rgba(0, 0, 0, 0.34);
         }
         #${ARTICLE_EXPORT_ID} .__xposter_article_export_menu button:hover,
         #${ARTICLE_EXPORT_ID} .__xposter_article_export_menu button:focus-visible {
-          background: rgba(231, 233, 234, 0.08);
+          background: var(--__xposter-export-paper-2);
         }
       }
       @media (prefers-reduced-motion: reduce) {
@@ -3097,6 +3211,7 @@
             <strong></strong>
             <p></p>
           </div>
+          <span class="__xposter_drop_status"></span>
         </div>
         <span class="__xposter_drop_mode" data-slot="markdown" aria-hidden="true"></span>
         <span class="__xposter_drop_mode" data-slot="image" aria-hidden="true"></span>
@@ -3112,9 +3227,20 @@
     hint.dataset.surface = surface;
     const title = hint.querySelector("strong");
     const detail = hint.querySelector("p");
+    const status = hint.querySelector(".__xposter_drop_status");
     const copy = dropHintCopy(mode, intent);
     if (title) title.textContent = translateContentText(copy.title);
     if (detail) detail.textContent = translateContentText(copy.detail);
+    if (status) status.textContent = translateContentText(dropHintStatusLabel(mode, intent));
+  }
+
+  function dropHintStatusLabel(mode, intent = "") {
+    if (intent === "article") return "Article";
+    if (intent === "sidepanel-queue" || mode === "sidepanel-queue" || mode === "queue") return "Queue";
+    if (intent === "sidepanel-draft" || mode === "sidepanel") return "Side panel";
+    if (mode === "folder") return "Folder";
+    if (mode === "image") return "Image";
+    return "Markdown";
   }
 
   function dropHintCopy(mode, intent = "") {
@@ -3172,8 +3298,10 @@
     hint.dataset.surface = dropHintSurfaceKind(intent);
     const title = hint.querySelector("strong");
     const detail = hint.querySelector("p");
+    const status = hint.querySelector(".__xposter_drop_status");
     if (title) title.textContent = translateContentText(copy.title);
     if (detail) detail.textContent = translateContentText(copy.detail);
+    if (status) status.textContent = translateContentText(dropHintStatusLabel(mode, intent));
     updateDropHintSurface(hint, intent);
   }
 
@@ -3192,8 +3320,10 @@
       : dropHintCopy(mode, intent);
     const title = hint.querySelector("strong");
     const detail = hint.querySelector("p");
+    const status = hint.querySelector(".__xposter_drop_status");
     if (title) title.textContent = translateContentText(copy.title);
     if (detail) detail.textContent = translateContentText(copy.detail);
+    if (status) status.textContent = translateContentText(dropHintStatusLabel(mode, intent));
   }
 
   function updateVisibleDropHintSurface() {
@@ -3377,13 +3507,16 @@
         align-items: center;
         justify-content: center;
         padding: 16px;
-        --xposter-drop-paper: rgba(255, 255, 255, 0.94);
-        --xposter-drop-line: rgba(15, 20, 25, 0.14);
-        --xposter-drop-dash: rgba(15, 20, 25, 0.24);
+        --xposter-drop-paper: rgba(255, 255, 255, 0.96);
+        --xposter-drop-line: #cfd9de;
+        --xposter-drop-dash: color-mix(in srgb, #536471, transparent 58%);
         --xposter-drop-ink: #0f1419;
         --xposter-drop-muted: #536471;
         --xposter-drop-accent: #536471;
-        --xposter-drop-blue: #1d9bf0;
+        --xposter-drop-signal: #1d9bf0;
+        --xposter-drop-signal-text: #0f6cbf;
+        --xposter-drop-ok: #00ba7c;
+        --xposter-drop-warn: #b15c00;
         --xposter-drop-progress: 0%;
         color: #0f1419;
         font: 14px/1.45 ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;
@@ -3399,10 +3532,10 @@
         inset: 0;
         z-index: 0;
         border: 1px solid var(--xposter-drop-line);
-        border-radius: 12px;
+        border-radius: 8px;
         background: var(--xposter-drop-paper);
         box-shadow:
-          0 14px 36px rgba(15, 20, 25, 0.12),
+          0 12px 30px rgba(15, 20, 25, 0.10),
           inset 0 0 0 1px rgba(255, 255, 255, 0.62);
       }
       #${DROP_HINT_ID}::after {
@@ -3411,7 +3544,7 @@
         inset: 7px;
         z-index: 1;
         border: 1px dashed var(--xposter-drop-dash);
-        border-radius: 8px;
+        border-radius: 7px;
         opacity: 0.56;
       }
       #${DROP_HINT_ID} .__xposter_drop_frame {
@@ -3478,7 +3611,7 @@
         border-right: 0;
         border-bottom: 0;
         border-left: 0;
-        border-radius: 16px 16px 0 0;
+        border-radius: 8px 8px 0 0;
       }
       #${DROP_HINT_ID}[data-surface="page-dock"]::after {
         content: "";
@@ -3493,34 +3626,98 @@
         opacity: 0.92;
         background:
           linear-gradient(90deg, var(--xposter-drop-accent) 0 var(--xposter-drop-progress), transparent var(--xposter-drop-progress) 100%),
-          rgba(15, 20, 25, 0.10);
+          color-mix(in srgb, var(--xposter-drop-accent), transparent 78%);
         overflow: hidden;
         transition: background 220ms cubic-bezier(0.22, 1, 0.36, 1);
       }
       #${DROP_HINT_ID}[data-surface="page-dock"] .__xposter_drop_frame {
-        width: min(620px, 100%);
+        width: min(720px, 100%);
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 12px;
       }
       #${DROP_HINT_ID}[data-mode="markdown"] {
-        --xposter-drop-accent: var(--xposter-drop-blue);
+        --xposter-drop-accent: var(--xposter-drop-signal);
         --xposter-drop-paper: rgba(246, 251, 255, 0.96);
         --xposter-drop-line: rgba(29, 155, 240, 0.28);
         --xposter-drop-dash: rgba(29, 155, 240, 0.40);
       }
       #${DROP_HINT_ID}[data-mode="markdown"][data-surface="page-dock"]::before {
         background:
-          linear-gradient(180deg, rgba(29, 155, 240, 0.10), rgba(29, 155, 240, 0.03)),
-          var(--xposter-drop-paper);
+          linear-gradient(180deg, rgba(84, 185, 255, 0.24), rgba(29, 155, 240, 0.08)),
+          linear-gradient(90deg, var(--xposter-drop-signal-text), var(--xposter-drop-signal) 52%, #0f7acb);
+        border-color: rgba(117, 201, 255, 0.62);
         box-shadow:
-          0 -10px 34px rgba(29, 155, 240, 0.16),
-          inset 0 1px 0 rgba(29, 155, 240, 0.34),
-          inset 0 0 0 1px rgba(255, 255, 255, 0.68);
+          0 -16px 42px rgba(29, 155, 240, 0.32),
+          inset 0 1px 0 rgba(255, 255, 255, 0.34),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.18);
       }
       #${DROP_HINT_ID}[data-mode="markdown"][data-surface="page-dock"]::after {
         background:
-          linear-gradient(90deg, transparent 0%, rgba(29, 155, 240, 0.0) 18%, rgba(29, 155, 240, 0.62) 50%, rgba(29, 155, 240, 0.0) 82%, transparent 100%) 0 0 / 180px 100% no-repeat,
-          linear-gradient(90deg, var(--xposter-drop-accent) 0 var(--xposter-drop-progress), transparent var(--xposter-drop-progress) 100%),
-          rgba(29, 155, 240, 0.16);
+          linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.0) 18%, rgba(255, 255, 255, 0.86) 50%, rgba(255, 255, 255, 0.0) 82%, transparent 100%) 0 0 / 180px 100% no-repeat,
+          linear-gradient(90deg, #ffffff 0 var(--xposter-drop-progress), transparent var(--xposter-drop-progress) 100%),
+          rgba(255, 255, 255, 0.30);
         animation: __xposter_drop_rail 1.7s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+      }
+      #${DROP_HINT_ID}[data-mode="markdown"][data-surface="page-dock"] .__xposter_drop_frame {
+        color: #ffffff;
+        text-shadow: 0 1px 10px rgba(0, 42, 78, 0.26);
+      }
+      #${DROP_HINT_ID}[data-mode="markdown"][data-surface="page-dock"] .__xposter_drop_copy {
+        display: grid;
+        gap: 3px;
+        min-width: 0;
+      }
+      #${DROP_HINT_ID}[data-mode="markdown"][data-surface="page-dock"] strong {
+        color: #ffffff;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        animation: __xposter_drop_text_focus 1.9s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+      }
+      #${DROP_HINT_ID}[data-mode="markdown"][data-surface="page-dock"] p {
+        max-width: 30rem;
+        margin: 0;
+        color: rgba(255, 255, 255, 0.86);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        animation: __xposter_drop_text_focus 1.9s cubic-bezier(0.22, 1, 0.36, 1) 120ms infinite;
+      }
+      #${DROP_HINT_ID} .__xposter_drop_status {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 24px;
+        max-width: 112px;
+        padding: 4px 9px;
+        border: 1px solid color-mix(in srgb, var(--xposter-drop-accent), transparent 58%);
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--xposter-drop-paper), transparent 14%);
+        color: color-mix(in srgb, var(--xposter-drop-muted), var(--xposter-drop-ink) 24%);
+        font-size: 10px;
+        font-weight: 720;
+        line-height: 1;
+        text-transform: uppercase;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      #${DROP_HINT_ID}[data-mode="markdown"][data-surface="page-dock"] .__xposter_drop_status {
+        border-color: rgba(255, 255, 255, 0.32);
+        background: rgba(255, 255, 255, 0.16);
+        color: rgba(255, 255, 255, 0.92);
+        text-shadow: none;
+      }
+      #${DROP_HINT_ID}[data-mode="markdown"][data-surface="page-dock"] .__xposter_drop_mark {
+        border-color: rgba(255, 255, 255, 0.48);
+        background: rgba(255, 255, 255, 0.18);
+        box-shadow: inset 0 0 0 4px rgba(255, 255, 255, 0.18);
+      }
+      #${DROP_HINT_ID}[data-mode="markdown"][data-surface="page-dock"] .__xposter_drop_mark::before,
+      #${DROP_HINT_ID}[data-mode="markdown"][data-surface="page-dock"] .__xposter_drop_mark::after {
+        background: #ffffff;
       }
       #${DROP_HINT_ID}[data-mode="markdown"][data-state="ready"] .__xposter_drop_mark {
         animation: __xposter_drop_mark_hint 1.45s cubic-bezier(0.22, 1, 0.36, 1) infinite;
@@ -3530,7 +3727,7 @@
         padding: 10px 14px;
       }
       #${DROP_HINT_ID}[data-surface="editor"]::before {
-        border-radius: 10px;
+        border-radius: 8px;
         background: rgba(255, 255, 255, 0.38);
         box-shadow:
           inset 0 0 0 1px color-mix(in srgb, var(--xposter-drop-accent), transparent 72%),
@@ -3565,20 +3762,20 @@
         white-space: nowrap;
       }
       #${DROP_HINT_ID}[data-mode="queue"] {
-        --xposter-drop-accent: #8a6f3d;
+        --xposter-drop-accent: var(--xposter-drop-warn);
       }
       #${DROP_HINT_ID}[data-mode="sidepanel"],
       #${DROP_HINT_ID}[data-mode="sidepanel-queue"] {
-        --xposter-drop-accent: #2f6f68;
+        --xposter-drop-accent: var(--xposter-drop-signal);
       }
       #${DROP_HINT_ID}[data-mode="image"] {
-        --xposter-drop-accent: #2f6f68;
+        --xposter-drop-accent: var(--xposter-drop-ok);
       }
       #${DROP_HINT_ID}[data-mode="folder"] {
-        --xposter-drop-accent: #6b665e;
+        --xposter-drop-accent: var(--xposter-drop-muted);
       }
       #${DROP_HINT_ID}[data-state="processing"] {
-        --xposter-drop-accent: #2f6f68;
+        --xposter-drop-accent: var(--xposter-drop-signal);
         --xposter-drop-progress: 100%;
       }
       #${DROP_HINT_ID}[data-state="processing"] .__xposter_drop_mark {
@@ -3617,11 +3814,17 @@
             0 0 0 7px rgba(29, 155, 240, 0);
         }
       }
+      @keyframes __xposter_drop_text_focus {
+        0%, 100% { opacity: 0.86; transform: translateY(0); }
+        45% { opacity: 1; transform: translateY(-1px); }
+      }
       @media (prefers-reduced-motion: reduce) {
         #${DROP_HINT_ID},
         #${DROP_HINT_ID} .__xposter_drop_frame,
         #${DROP_HINT_ID}[data-state="processing"] .__xposter_drop_mark,
         #${DROP_HINT_ID}[data-mode="markdown"][data-state="ready"] .__xposter_drop_mark,
+        #${DROP_HINT_ID}[data-mode="markdown"][data-surface="page-dock"] strong,
+        #${DROP_HINT_ID}[data-mode="markdown"][data-surface="page-dock"] p,
         #${DROP_HINT_ID}[data-surface="page-dock"]::after {
           animation: none;
         }
@@ -3629,15 +3832,24 @@
       @media (prefers-color-scheme: dark) {
         #${DROP_HINT_ID} {
           --xposter-drop-paper: rgba(22, 24, 28, 0.94);
-          --xposter-drop-line: rgba(231, 233, 234, 0.18);
+          --xposter-drop-line: #33414d;
           --xposter-drop-dash: rgba(231, 233, 234, 0.22);
           --xposter-drop-ink: #e7e9ea;
           --xposter-drop-muted: #aeb4b9;
+          --xposter-drop-signal: #66a9d8;
+          --xposter-drop-signal-text: #9ccbec;
+          --xposter-drop-ok: #6fc8a4;
+          --xposter-drop-warn: #d8b765;
         }
         #${DROP_HINT_ID}[data-mode="markdown"] {
           --xposter-drop-paper: rgba(15, 29, 43, 0.96);
           --xposter-drop-line: rgba(29, 155, 240, 0.34);
           --xposter-drop-dash: rgba(29, 155, 240, 0.42);
+        }
+        #${DROP_HINT_ID}[data-mode="markdown"][data-surface="page-dock"]::before {
+          background:
+            linear-gradient(180deg, rgba(84, 185, 255, 0.22), rgba(29, 155, 240, 0.10)),
+            linear-gradient(90deg, #0c5f9e, var(--xposter-drop-signal) 52%, #0c6fb6);
         }
         #${DROP_HINT_ID}::before {
           box-shadow:
@@ -3664,6 +3876,13 @@
           top: auto;
           bottom: 0;
           height: 104px;
+        }
+        #${DROP_HINT_ID}[data-surface="page-dock"] .__xposter_drop_frame {
+          grid-template-columns: 30px minmax(0, 1fr);
+          gap: 10px;
+        }
+        #${DROP_HINT_ID}[data-surface="page-dock"] .__xposter_drop_status {
+          display: none;
         }
         #${DROP_HINT_ID} .__xposter_drop_mark {
           width: 28px;

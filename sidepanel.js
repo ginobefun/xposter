@@ -50,7 +50,15 @@
     recordEditSheet: document.getElementById("recordEditSheet"),
     recordEditTitle: document.getElementById("recordEditTitle"),
     recordEditMeta: document.getElementById("recordEditMeta"),
+    recordEditBody: document.getElementById("recordEditBody"),
+    recordEditToolbar: document.getElementById("recordEditToolbar"),
+    recordEditInputWrap: document.getElementById("recordEditInputWrap"),
+    recordEditHighlight: document.getElementById("recordEditHighlight"),
+    recordEditPreview: document.getElementById("recordEditPreview"),
+    recordEditPreviewBody: document.getElementById("recordEditPreviewBody"),
     recordEditTextarea: document.getElementById("recordEditTextarea"),
+    recordEditStats: document.getElementById("recordEditStats"),
+    recordEditModeToggle: document.getElementById("recordEditModeToggle"),
     recordEditPrimaryLabel: document.getElementById("recordEditPrimaryLabel"),
     recordEditWriteButton: document.getElementById("recordEditWriteButton"),
     draftQueue: document.getElementById("draftQueue"),
@@ -180,6 +188,16 @@
   const STARTUP_DRAFT_ANALYZE_DELAY_MS = 260;
   const STARTUP_IDLE_TIMEOUT_MS = 650;
   const STARTUP_PAGE_STATE_TIMEOUT_MS = 900;
+  const STARTUP_STORAGE_KEYS = [
+    STORAGE_DRAFT,
+    STORAGE_DRAFT_QUEUE,
+    STORAGE_THEME,
+    STORAGE_LANGUAGE,
+    STORAGE_IMPORT_OPTIONS,
+    STORAGE_ARTICLE_EXPORT_SETTINGS,
+    STORAGE_SUCCESS_FEEDBACK,
+    STORAGE_LIVE_RESULT
+  ];
   const SYNTAX_HIGHLIGHT_DETAIL_LIMIT = 60000;
   const THEME_MODES = new Set(["system", "light", "dark"]);
   const SUCCESS_SOUND_VOLUME = 1;
@@ -223,6 +241,7 @@
   let latestEvidence = null;
   let recordHistory = [];
   let draftQueue = [];
+  let draftQueueMediaReady = true;
   let activeQueueItemId = null;
   let recordSearchQuery = "";
   let activeRecordEditorId = null;
@@ -237,9 +256,12 @@
   let draftInputHistoryTimer = null;
   let draftSaveTimer = null;
   let draftAnalyzeTimer = null;
+  let draftSyntaxIdleHandle = null;
+  let draftQueueMediaIdleHandle = null;
   let recordSearchTimer = null;
   let recordHistoryRestored = false;
   let recordHistoryRestorePromise = null;
+  let startupStoragePromise = null;
   let pendingRecordHistoryEntries = [];
   let suppressNextTypedHistory = false;
   let activeWriteQueueItemId = null;
@@ -253,1624 +275,23 @@
   let successAudioContext = null;
   let lastSuccessFeedbackKey = "";
   let draftEditorMode = "edit";
+  let recordEditMode = "edit";
   let miniGfmRenderer = null;
   let runSummaryCollapseTimer = null;
   let draftDropStatusTimer = null;
   let remoteImageAccessStatus = { origins: [], available: [], missing: [], checkedAt: null };
   let remoteImageProbeStatus = { state: "idle", total: 0, ok: 0, fail: 0, results: [], checkedAt: null };
 
-  const ZH_TEXT = new Map(
-    Object.entries({
-      "Markdown to X Articles": "Markdown 导入 X 文章",
-      Automatic: "自动",
-      "Import Markdown to X Articles": "把 Markdown 草稿导入 X 文章",
-      "Write Markdown to X Article": "把 Markdown 写入 X 文章",
-      "Paste Markdown, then write it into the current or new X Article.": "粘贴 Markdown，然后写入当前或新建的 X 文章。",
-      "Write workflow": "写入流程",
-      "Writing progress meter": "写入进度",
-      "Put your draft here first. xPoster shows the next step and never publishes for you.": "先把草稿放进来。xPoster 会告诉你下一步，不会替你发布。",
-      "v...": "v...",
-      "Installed version": "当前版本",
-      "Use this number to confirm Chrome has reloaded the newest xPoster build.": "用这个版本号确认 Chrome 是否已重载最新的 xPoster 构建。",
-      "Move Markdown into X Articles": "把 Markdown 放进 X 文章",
-      "Paste Markdown into X Articles": "把 Markdown 粘贴进 X 文章",
-      "Paste a draft, open the article, then import. xPoster never publishes for you.": "粘贴草稿，打开文章，然后导入。xPoster 不会替你发布。",
-      Checking: "检查中",
-      "Checking X": "正在识别 X",
-      "Open X Articles entry": "打开 X 文章入口",
-      "Not on X": "未在 X 页面",
-      "Refresh X": "刷新 X 页面",
-      "Old importer active": "旧脚本仍在运行",
-      "Editor ready": "编辑器就绪",
-      "X Articles ready": "X 文章页就绪",
-      "Not an article page": "不是文章页",
-      "Not open": "未打开",
-      Language: "语言",
-      "Choose the side panel language.": "选择侧边栏语言。",
-      "Start here": "从这里开始",
-      "Move a Markdown draft into X Article": "把 Markdown 草稿导入 X 文章",
-      "Paste, check, import": "粘贴、检查、导入",
-      "Paste or load a draft. xPoster shows the next safe step and keeps the technical checks out of your way unless something needs attention.": "粘贴或加载草稿。xPoster 会显示下一步，只有需要处理时才展示技术检查。",
-      "Current Markdown draft": "当前 Markdown 草稿",
-      "No draft selected": "未选择草稿",
-      "Paste, choose, or drop Markdown to prepare an article.": "粘贴、选择或拖入 Markdown 来准备文章。",
-      "Add or drop Markdown": "添加或拖入 Markdown",
-      "Use Add draft, choose a file, or drop .md files here.": "粘贴 Markdown、选择文件，或把 .md 文件拖到这里。",
-      "Paste Markdown here, choose a file, or drop .md files.": "在这里粘贴 Markdown、选择文件，或拖入 .md 文件。",
-      "Markdown editor tools": "Markdown 编辑工具",
-      "Editor mode": "编辑模式",
-      "Markdown formatting": "Markdown 格式",
-      Write: "编写",
-      Read: "阅读",
-      Check: "检查",
-      Bold: "加粗",
-      Italic: "斜体",
-      Heading: "标题",
-      Code: "代码",
-      Link: "链接",
-      Image: "图片",
-      Table: "表格",
-      Edit: "编辑",
-      "Release to load it.": "松开后载入草稿。",
-      "Reading dropped Markdown.": "正在读取拖入的 Markdown。",
-      "Reading file...": "正在读取文件...",
-      "Pending drafts": "待发布草稿",
-      "One list: select a draft, then write it.": "一个列表：选中草稿，然后写入。",
-      "Click a draft to edit.": "点击草稿即可编辑。",
-      "No pending drafts": "暂无待发布草稿",
-      "Add one draft or drop Markdown files here.": "粘贴一篇草稿，或把 Markdown 文件拖到这里。",
-      "Create draft": "新建草稿",
-      "Edit draft": "编辑草稿",
-      "Draft actions": "草稿操作",
-      "Save draft": "保存草稿",
-      "Save only": "仅保存",
-      "Write this draft": "写入这篇",
-      "Write to X draft": "写入到 X 草稿",
-      "Writing to X draft...": "正在写入 X 草稿...",
-      "Write all drafts": "批量写入",
-      "Writing all...": "正在批量写入...",
-      "Writing queued drafts one by one.": "正在逐篇写入队列草稿。",
-      "Queued drafts are written one by one. Each successful draft leaves the list.": "队列草稿会逐篇写入。成功写入后会从列表移除。",
-      "Stop": "停止",
-      "Stopping...": "正在停止...",
-      "Stop requested. xPoster will stop before the next upload step.": "已请求停止。xPoster 会在下一个上传步骤前停下。",
-      "Writing stopped by user.": "写入已停止。",
-      Stopped: "已停止",
-      "Stop request failed: active X tab did not respond": "停止请求失败：当前 X 标签页没有响应",
-      "One Markdown file was too large for the queue. Load that draft by itself.": "单篇 Markdown 超过队列保存上限。请单独载入这篇草稿。",
-      "Queue was trimmed to fit browser storage.": "队列已自动收缩，以适应浏览器存储空间。",
-      "Could not save the Markdown queue in browser storage.": "无法把 Markdown 队列保存到浏览器存储。",
-      "Loaded dragged Markdown.": "已载入拖入的 Markdown。",
-      "{count} new draft(s) added. {total} total in queue.": "新增 {count} 篇草稿，队列现在有 {total} 篇。",
-      "Fix the image count in the editor.": "请在编辑框里调整图片数量。",
-      "Close to the image limit.": "已接近图片上限。",
-      [X_ARTICLE_MEDIA_LIMIT_WARNING]: "图片：{count}/{limit}。请先删掉 {extra} 张图再写入。",
-      [X_ARTICLE_MEDIA_HEADROOM_NOTE]: "图片：{count}/{limit}。已接近 X 文章图片上限。",
-      [X_ARTICLE_MEDIA_CAPACITY_NOTE]: "图片：{count}/{limit}。",
-      "Too many images": "图片过多",
-      "X Article media note": "X 文章媒体提醒",
-      "Review before writing": "写入前确认",
-      "Focus the Markdown editor below.": "光标已放到下面的 Markdown 编辑框。",
-      "Review queue": "检查队列",
-      "Write queue": "写入队列",
-      "Write all drafts or edit one.": "批量写入，或打开某一篇单独编辑。",
-      "Write queued drafts": "写入队列草稿",
-      "Ready to write queued drafts one by one.": "可以逐篇写入队列草稿。",
-      "Batch draft writing started.": "开始批量写入草稿。",
-      "Queued draft not found": "未找到队列草稿",
-      "Markdown updated": "Markdown 已更新",
-      "Markdown draft updated.": "Markdown 草稿已更新。",
-      "Queued Markdown copied.": "已复制队列中的 Markdown。",
-      "Queued Markdown updated.": "队列中的 Markdown 已更新。",
-      "Put your draft in the box below. xPoster shows the next step and will not write to X until you click Import.": "把草稿放进下面的输入框。xPoster 会显示下一步；只有你点击导入时才会写入 X。",
-      "Import in three steps": "三步完成导入",
-      "Three-step import": "三步导入",
-      "Paste Markdown, then import": "先粘贴 Markdown，再导入",
-      "Paste a Markdown draft, open an X Article, then let xPoster move the content for you.": "粘贴 Markdown 草稿，打开一篇 X 文章，然后让 xPoster 帮你搬过去。",
-      "Add your draft, check the X editor, then import and review the article.": "放入草稿，检查 X 编辑器，然后导入并检查文章。",
-      "Put your draft here first. xPoster will guide the X Article check and import after that.": "先把草稿放进来。之后 xPoster 会引导你检查 X 文章并导入。",
-      "Add draft": "添加 Markdown",
-      "Add your Markdown": "放入 Markdown",
-      "Add your draft": "放入草稿",
-      "Paste Markdown": "粘贴 Markdown",
-      "Add a draft or choose a .md file.": "添加草稿或选择 .md 文件。",
-      "Paste here or choose a .md file.": "在这里粘贴，或选择 .md 文件。",
-      "Paste text or choose a Markdown file.": "粘贴文字或选择 Markdown 文件。",
-      "Paste text or choose a .md file.": "粘贴文字或选择 .md 文件。",
-      "Paste a draft or load a Markdown file.": "粘贴草稿或加载 Markdown 文件。",
-      "Paste a draft or choose a Markdown file.": "粘贴草稿或选择 Markdown 文件。",
-      "Choose .md file": "选择 .md 文件",
-      "Step 1: paste Markdown, or choose a .md file.": "第一步：粘贴 Markdown，或选择 .md 文件。",
-      "Recognized: nothing yet": "已识别：暂无内容",
-      "Recognized: title, body": "已识别：标题、正文",
-      "Recognized: body": "已识别：正文",
-      "No X Article page detected yet. Write will open or create a draft.": "还没有检测到 X 文章页，点击写入时会打开/创建草稿。",
-      "Will write to the currently open X Article draft.": "将写入当前打开的 X 文章草稿。",
-      "X Articles is open; Write will open or create a draft.": "X 文章页已打开，点击写入时会打开或创建草稿。",
-      "Input Markdown": "输入 Markdown",
-      "Paste or drop your draft.": "粘贴或拖入草稿。",
-      "Add or drop your draft.": "添加或拖入草稿。",
-      "Paste Markdown or drop a file here": "粘贴 Markdown 或把文件拖到这里",
-      "Write in MacDown, Obsidian, Typora, or any Markdown editor. xPoster writes this draft into the current or new X Article.": "在 MacDown、Obsidian、Typora 或任何 Markdown 编辑器里写完，再让 xPoster 写入当前或新建的 X 文章。",
-      "Write article": "写入文章",
-      "Use the current X Article or create one.": "使用当前 X 文章，或新建一篇。",
-      "Open article": "打开文章",
-      "Open X Article": "打开 X 文章",
-      "Open X Articles": "打开 X 文章",
-      "Check editor": "检查编辑器",
-      "Check X page": "检查文章",
-      "Check article": "检查文章",
-      "Check article": "检查文章",
-      "What happens": "会发生什么",
-      "What happens:": "会发生什么：",
-      "How web images are handled": "网页图片如何处理",
-      "xPoster downloads public web images in the extension background, then lets X upload them.": "xPoster 会在扩展后台下载公开网页图片，然后交给 X 上传。",
-      "private, expired, blocked, or unreachable images stay as Markdown links in the article.": "私有、过期、受阻或无法访问的图片会在文章中保留为 Markdown 链接。",
-      "Paste Markdown here, fill the open X Article there": "在这里粘贴 Markdown，填入当前 X 文章",
-      "xPoster previews your draft first. When you click Import, it fills the active X Article editor, uploads images it can read, and then stops for your review.": "xPoster 会先预览草稿。点击导入后，它会填入当前 X 文章编辑器、上传能读取的图片，然后停下来让你检查。",
-      Cost: "费用",
-      "Free to use. No xPoster account, subscription, trial limit, or feature lock.": "免费使用。不需要 xPoster 账号、订阅，没有试用限制或功能锁。",
-      "Free. No xPoster account, subscription, trial limit, or feature lock.": "免费。不需要 xPoster 账号、订阅，没有试用限制或功能锁。",
-      "Draft privacy": "草稿隐私",
-      "Your Markdown stays in this browser. xPoster has no server and no analytics.": "Markdown 留在这个浏览器里。xPoster 没有服务器，也没有分析统计。",
-      "Your draft stays in this browser. xPoster has no server or analytics.": "草稿留在这个浏览器里。xPoster 没有服务器，也没有分析统计。",
-      "Privacy and control": "隐私和控制权",
-      "Your draft stays in this browser. Import fills the editor only; you still review and publish in X.": "草稿留在这个浏览器里。xPoster 只填入编辑器；仍由你在 X 中检查并发布。",
-      "Your draft stays in this browser. xPoster fills the editor only; you still review and publish in X.": "草稿留在这个浏览器里。xPoster 只填入编辑器；仍由你在 X 中检查并发布。",
-      Local: "本地",
-      "Publishing control": "发布控制",
-      "xPoster fills the editor only after Import. You still review and publish in X.": "只有点击导入后 xPoster 才会填入编辑器。仍由你在 X 中检查并发布。",
-      "Import fills the editor. You still review and publish in X.": "导入只会填入编辑器。仍由你在 X 中检查并发布。",
-      "Image permission": "图片处理",
-      "Web images may need one Chrome approval for their image site before upload.": "网页图片会在写入时自动尝试处理；失败时保留为 Markdown 链接。",
-      "Web image links may ask once for Chrome approval before upload.": "网页图片会在写入时自动尝试处理；失败时保留为 Markdown 链接。",
-      "Web image permission": "网页图片处理",
-      "Web image handling": "网页图片处理",
-      "xPoster tries public image downloads in the background; failed downloads stay as Markdown links.": "xPoster 会在后台尝试下载公开图片；下载失败的图片会保留为 Markdown 链接。",
-      "Remote image links may ask once for Chrome approval before xPoster can upload them into X.": "网页图片会在写入时自动尝试处理；失败时保留为 Markdown 链接。",
-      "Ask first": "自动处理",
-      "What xPoster does": "xPoster 做什么",
-      "Turns your Markdown draft into an X Article": "把 Markdown 草稿变成 X 文章",
-      "Paste your draft, open the X Article you want to fill, then let xPoster upload images and place the content. It never publishes for you.": "粘贴草稿，打开要填入内容的 X 文章，然后让 xPoster 上传图片并放置内容。它不会替你发布。",
-      "Cost: no xPoster account, subscription, trial limit, or feature lock.": "费用：不需要 xPoster 账号、订阅，没有试用限制或功能锁。",
-      "Free: no xPoster account, subscription, trial limit, or feature lock.": "免费：不需要 xPoster 账号、订阅，没有试用限制或功能锁。",
-      "Local: your draft stays in this browser; xPoster has no server.": "本地处理：草稿留在这个浏览器里；xPoster 没有服务器。",
-      "You publish: xPoster only fills the editor after you click Import.": "你来发布：只有点击导入后，xPoster 才会填入编辑器。",
-      "Image permission: web images may ask once for Chrome approval.": "图片处理：写入时自动尝试处理网页图片。",
-      Connection: "连接状态",
-      "X page": "X 页面",
-      "Control: xPoster fills the editor only after you click Import; you still review and publish in X.": "控制权：只有点击导入后 xPoster 才会填入编辑器；仍由你在 X 中检查并发布。",
-      "Images: web image links may ask once for Chrome permission to read that image website.": "图片：写入时自动尝试处理网页图片；失败时保留链接。",
-      "Next step": "下一步",
-      "Remote images need one Chrome approval": "网页图片自动处理",
-      "Web images can upload after one Chrome approval": "网页图片可下载时自动上传",
-      "Allow site": "网页图片",
-      "Do this next": "下一步操作",
-      "Main action": "主要操作",
-      "Create or open the X Article to fill.": "创建或打开要填入内容的 X 文章。",
-      "Create or open the article draft in X.": "在 X 中创建或打开文章草稿。",
-      "Create or open the article you want to fill.": "创建或打开你要填入内容的文章。",
-      "Open x.com/compose/articles before importing.": "导入前先打开 x.com/compose/articles。",
-      "Import, then review": "导入后检查",
-      "Import and review": "导入并检查",
-      "X tab": "X 标签页",
-      "Final check": "最后检查",
-      "xPoster fills the draft; you publish in X.": "xPoster 填入草稿；由你在 X 中发布。",
-      "Click Import, then review in X before publishing.": "点击导入，然后在 X 中检查无误后再发布。",
-      "Let xPoster fill the article, then check it in X.": "让 xPoster 填入文章，然后在 X 中检查。",
-      "Run the check, import, then confirm the article.": "先检查，再导入，最后确认文章结果。",
-      "Run Check, then import when the button is available.": "先点检查，导入按钮可用后再导入。",
-      "Run Check X page, then import when the button is available.": "先点击检查文章，导入按钮可用后再导入。",
-      "Run Check article, then import when the button is available.": "先点击检查文章，导入按钮可用后再导入。",
-      "No xPoster account or subscription.": "不需要 xPoster 账号或订阅。",
-      "No account or subscription.": "不需要账号或订阅。",
-      "Free: no xPoster account.": "免费：不需要 xPoster 账号。",
-      "Free, no xPoster account": "免费，无需 xPoster 账号",
-      "Free, no account or subscription": "免费，无需账号或订阅",
-      "Free to use.": "免费使用。",
-      Free: "免费",
-      "Local: draft stays here.": "本地：草稿留在这里。",
-      "Local draft": "本地草稿",
-      "Draft stays in this browser": "草稿留在这个浏览器里",
-      "No account.": "不需要账号。",
-      "Draft stays here.": "草稿留在这里。",
-      "You publish in X.": "由你在 X 中发布。",
-      "You publish": "你来发布",
-      "You review and publish in X": "你在 X 中检查并发布",
-      "Cost: no xPoster account, subscription, or trial limit.": "费用：不需要 xPoster 账号、订阅，也没有试用限制。",
-      "Draft stays in your browser; publishing uses your signed-in X tab.": "草稿保留在浏览器内；发布使用你已登录的 X 标签页。",
-      "Draft stays in this browser.": "草稿留在这个浏览器里。",
-      "You review and publish in X.": "由你在 X 中检查并发布。",
-      "Raw Markdown stays here": "这里保留 Markdown 原文",
-      "This box always keeps the original Markdown text. Use Preview to see recognized images and links; images appear in X only after approval, download check, and Import.": "这个输入框始终保留 Markdown 原文。请到预览里看识别到的图片和链接；写入时可下载的图片会上传到 X。",
-      "Use Preview to see what xPoster found. Imported images appear in X after Allow image website, Check downloads, and Import.": "在预览里查看 xPoster 识别到的内容。写入时，能下载的网页图片会上传到 X；失败的图片会保留链接。",
-      "If image links still look like Markdown here, that is normal. xPoster converts them during Import, not inside this text box.": "如果图片链接在这里仍然像 Markdown 语法，这是正常的。xPoster 会在导入时转换它们，不会在这个输入框里转换。",
-      "Drop Markdown here": "拖拽上传",
-      "Release anywhere in this panel to load or queue the draft.": "在这个区域任意位置松开，即可载入或加入待发布队列。",
-      "Release to load it into the article draft": "松开后加入待发布草稿",
-      "Release to load Markdown": "松开即可载入 Markdown",
-      "Release to load": "松开载入",
-      "Drop cancelled": "已取消拖拽",
-      "Reading Markdown...": "正在读取 Markdown...",
-      "Markdown loaded": "草稿就绪",
-      "Could not load Markdown": "无法载入 Markdown",
-      "Ready for Markdown": "等待 Markdown",
-      "Ready to write.": "可以写入。",
-      "Draft added": "草稿已添加",
-      "No new Markdown drafts were added.": "没有新增 Markdown 草稿。",
-      "No Markdown content": "没有 Markdown 内容",
-      "Unknown": "未知",
-      "Optional": "可选",
-      "Can create": "可新建",
-      "Not ready": "未就绪",
-      "Markdown parsed": "Markdown 已解析",
-      "Status update": "状态更新",
-      "Live progress reset.": "实时进度已重置。",
-      "Received an import progress update from the active X tab.": "已收到当前 X 标签页的导入进度更新。",
-      "Preparing Markdown, images, and the X editor.": "正在准备 Markdown、图片和 X 编辑器。",
-      "Writing the article body into X.": "正在把文章正文写入 X。",
-      "Placing images, tweets, code, and dividers into the article.": "正在放置图片、推文、代码和分隔线。",
-      "Setting the title and cover without changing body image order.": "设置标题和封面，同时保持正文图片顺序。",
-      "Setting article title and matching cover after ordered uploads.": "设置文章标题，并在图片按顺序上传后匹配封面。",
-      "Live status received from the active X tab.": "已收到当前 X 标签页的实时状态。",
-      "Writing finished.": "写入完成。",
-      "Writing failed": "写入失败",
-      "Paste or drop Markdown": "添加或拖入 Markdown",
-      "MacDown, Obsidian, Typora, or any .md file.": "支持 MacDown、Obsidian、Typora 或 .md 文件。",
-      "Drop a .md file or paste text into the editor below.": "拖入 .md 文件，或把文本粘贴到下面的编辑框。",
-      "Paste text or choose a .md file.": "粘贴文本，或选择 .md 文件。",
-      "Release the file here. xPoster will load it into the draft box, not publish it.": "在这里松开文件。xPoster 会把它载入草稿框，不会发布。",
-      "Release to add it to Pending.": "松开后载入草稿。",
-      "Release to load it here.": "松开后载入这里。",
-      "Loaded": "已载入",
-      "Loading the dropped content into the draft box.": "正在读取拖入的 Markdown。",
-      "Adding the dropped content to Pending.": "正在读取拖入的 Markdown。",
-      "characters. Review it, then click Write to X draft.": "个字符。检查后点击写入到 X 草稿。",
-      "That drop did not include Markdown text or a .md file.": "这次拖入没有包含 Markdown 文本或 .md 文件。",
-      "Try a .md, .markdown, .txt file, or plain Markdown text.": "请拖入 .md、.markdown、.txt 文件，或普通 Markdown 文本。",
-      "Web images stayed as links?": "网页图片保留成链接？",
-      "Try upload": "尝试上传",
-      "Try image upload": "尝试图片上传",
-      "Write again": "再次写入",
-      "Allow this image website now?": "网页图片保留为链接？",
-      "Click Allow image website. Chrome will ask once; choose Allow, then write again.": "把失败图片换成公开可访问链接，然后再次写入。",
-      "The article can still be written now; those web images will stay as Markdown links.": "现在也可以继续写入文章；这些网页图片会保留为 Markdown 链接。",
-      "Image website allowed. Write again to upload those images into X.": "图片可下载。再次写入即可把这些图片上传到 X。",
-      "Some web images are still links. Try image upload again, or replace unreachable image URLs with public links.": "有些网页图片仍是链接。可以再次尝试图片上传，或把不可访问的图片 URL 换成公开链接。",
-      "X media upload took too long. X may be throttling this draft, especially with many images. Wait a moment, then write again or split the article.": "X 上传图片等待太久。图片较多时 X 可能会限速。可以稍等后再次写入，或把文章拆成多篇。",
-      "All web images are ready. Write again to upload them.": "所有网页图片已就绪。再次写入即可上传。",
-      "All web images uploaded.": "所有网页图片已上传。",
-      "No import has run yet.": "还没有写入记录。",
-      "Article written.": "文章已写入。",
-      "Web images stayed as Markdown links. Allow the image website, then write again to upload them.": "网页图片保留为 Markdown 链接。替换为公开可下载链接后再次写入即可上传。",
-      "Uploaded": "已上传",
-      "kept as links": "保留为链接",
-      "Option:": "可选：",
-      "allow that image website, then write again so xPoster can upload them.": "替换为公开可下载链接，然后再次写入，xPoster 就可以上传这些图片。",
-      "Fallback:": "备选：",
-      "if Chrome still cannot read them, xPoster keeps the Markdown links in the article.": "如果 Chrome 仍然无法读取，xPoster 会把 Markdown 图片链接保留在文章里。",
-      "1. Input Markdown": "1. 输入 Markdown",
-      "Paste Markdown or drop a file": "粘贴 Markdown 或拖入文件",
-      "Write in MacDown, Obsidian, Typora, or any Markdown editor. xPoster keeps this text here.": "可以从 MacDown、Obsidian、Typora 或任何 Markdown 编辑器复制。xPoster 会把原文保存在这里。",
-      "# Article title\n\nPaste your Markdown here.": "# 文章标题\n\n把 Markdown 粘贴到这里。",
-      "Markdown image links stay as text here. They become uploaded images when xPoster writes the article.": "Markdown 图片链接会先保留为文字；写入文章时会变成上传图片。",
-      "Privacy: your draft is processed in this browser; xPoster has no server.": "隐私：草稿只在这个浏览器里处理；xPoster 没有服务器。",
-      "xPoster fills the draft; you still review and publish in X.": "xPoster 只填入草稿；仍由你在 X 中检查并发布。",
-      "Control: xPoster fills the editor; you still review and publish in X.": "控制权：xPoster 负责填入编辑器；仍由你在 X 中检查并发布。",
-      "Remote image links may ask once for Chrome site access.": "网页图片会在写入时自动尝试处理。",
-      "Images: remote image links need a one-time Chrome allow step.": "图片：网页图片能下载就上传，失败就保留链接。",
-      "No review yet.": "尚未检查文章。",
-      "Ready to import": "导入准备",
-      "Current step": "当前步骤",
-      "Start by pasting a complete draft. xPoster previews it here first; nothing is written to X until the main button says Import.": "先粘贴完整草稿。xPoster 会先在这里预览；只有主按钮显示导入时，才会写入 X。",
-      "Paste the full draft here. xPoster previews first and writes to X only after you click Import.": "把完整草稿粘贴到这里。xPoster 会先预览，只有点击导入后才写入 X。",
-      "Save record": "保存记录",
-      "Save details": "保存详情",
-      Draft: "草稿",
-      Target: "X 文章",
-      "X Article": "X 文章",
-      Bridge: "X 编辑器",
-      "Editor check": "编辑器检查",
-      Media: "媒体",
-      Evidence: "记录",
-      Review: "检查",
-      "No Markdown loaded.": "未加载 Markdown。",
-      "Open X Articles.": "打开 X 文章。",
-      "Run a check.": "运行检查。",
-      "No uploads yet.": "还没有上传。",
-      "No uploads required.": "无需上传。",
-      "No live result.": "没有文章检查结果。",
-      "Import readiness": "导入准备",
-      "Not ready yet": "还没准备好",
-      "Live gate": "导入状态",
-      "Completion unproven": "还不能确认完成",
-      "Load a draft and open X Articles before importing.": "导入前先加载草稿并打开 X 文章。",
-      "X target": "X 文章",
-      "X Article": "X 文章",
-      Import: "导入",
-      "Next action": "下一步",
-      "Load a Markdown draft": "加载 Markdown 草稿",
-      "Add a Markdown draft": "放入 Markdown 草稿",
-      "Choose file": "选择文件",
-      "Paste Markdown into the draft editor, or choose a file.": "将 Markdown 粘贴到草稿编辑器，或选择文件。",
-      "Paste Markdown into the draft box, or choose a file.": "粘贴 Markdown，或选择文件。",
-      "Add a draft or choose a file.": "添加草稿或选择文件。",
-      "Paste a Markdown draft or choose a file. xPoster will preview it before anything is written to X.": "粘贴 Markdown 草稿或选择文件。xPoster 会先预览，不会立刻写入 X。",
-      "Paste a draft or choose a .md file. xPoster previews it first and does not write to X yet.": "粘贴草稿或选择 .md 文件。xPoster 会先预览，此时不会写入 X。",
-      "Paste your Markdown or choose a .md file. xPoster will preview the draft before touching X.": "粘贴 Markdown 或选择 .md 文件。xPoster 会先预览草稿，不会立刻操作 X。",
-      "Paste your Markdown in the box, or choose a .md file.": "把 Markdown 粘贴到草稿框，或选择 .md 文件。",
-      "Paste your Markdown in the draft box, or choose a .md file.": "把 Markdown 粘贴到草稿框，或选择 .md 文件。",
-      "# Article title\n\nPaste your Markdown here. xPoster will preview text and images, then show the next step.": "# 文章标题\n\n把 Markdown 粘贴到这里。xPoster 会预览文字和图片，然后显示下一步。",
-      "Paste Markdown or choose a file.": "粘贴 Markdown 或选择文件。",
-
-      Gate: "状态",
-      Status: "状态",
-      Progress: "进度",
-      "Load draft": "加载草稿",
-      "Paste or load Markdown before importing.": "导入前请粘贴或加载 Markdown。",
-      "Load a Markdown draft. Open an X Articles tab.": "加载 Markdown 草稿。打开 X 文章 标签页。",
-      "Open x.com/compose/articles in the active tab.": "在当前标签页打开 X 文章编辑页。",
-      "Use the open X Article tab.": "使用当前打开的 X 文章标签页。",
-      "Open the X Article tab you want xPoster to fill.": "打开你要让 xPoster 填写的 X 文章标签页。",
-      Check: "检查",
-      Open: "打开",
-      Preview: "预览",
-      Pending: "待发布",
-      "Publish records": "记录",
-      "Publish history": "记录",
-      Verify: "验证",
-      Records: "记录",
-      Settings: "设置",
-      "Search records": "搜索记录",
-      "Clear all": "全部清空",
-      "Clear": "清空",
-      "Clear all saved draft records?": "清空所有草稿记录？",
-      Cancel: "取消",
-      "Draft recovery": "找回草稿",
-      "Find previous text": "找回上次输入",
-      "Find the Markdown you used before, copy it, or edit it before writing.": "找回之前输入的 Markdown，复制或编辑后再写入。",
-      "Search title, file, URL, or Markdown text": "搜索标题、文件、网址或 Markdown 内容",
-      "Search Markdown text, title, file, or URL": "搜索 Markdown 原文、标题、文件或网址",
-      "Search past drafts, links, and write results.": "搜索过去的草稿、链接和写入结果。",
-      "Search can find saved Markdown text, file names, and URLs.": "可以搜索已保存的 Markdown 原文、文件名和网址。",
-      "Paste or load Markdown to save the first recoverable draft.": "粘贴或载入 Markdown 后，会保存第一条可找回的草稿。",
-      "Record actions": "记录操作",
-      "recoverable Markdown draft(s). Newest first.": "条 Markdown 草稿可找回，最新在前。",
-      "No recoverable Markdown drafts yet.": "还没有可找回的 Markdown 草稿。",
-      "Use draft": "使用这份草稿",
-      "Copy text": "复制原文",
-      "Edit first": "编辑再用",
-      "使用这份草稿": "使用这份草稿",
-      "复制原文": "复制原文",
-      "编辑再用": "编辑再用",
-      Language: "语言",
-      "Choose the side panel language.": "选择侧边栏语言。",
-      Appearance: "外观",
-      "Choose how xPoster looks in the side panel.": "选择侧边栏的显示外观。",
-      System: "跟随系统",
-      Light: "浅色",
-      Dark: "暗色",
-      "Everything is included": "功能全部包含",
-      "No account, subscription, trial limit, or feature lock.": "无需账号、订阅、试用限制或功能锁。",
-      On: "开启",
-      "Privacy and control": "隐私和控制",
-      "Your draft stays in this browser. xPoster fills the editor only; you still review and publish in X.": "你的草稿留在这个浏览器里。xPoster 只填写编辑器，你仍然在 X 中检查并发布。",
-      Local: "本地",
-      "Web image handling": "网页图片处理",
-      "xPoster tries public image downloads in the background; failed downloads stay as Markdown links.": "xPoster 会在后台尝试下载公开图片；失败的图片会保留为 Markdown 链接。",
-      Auto: "自动",
-      "Choose the folder that contains relative image paths in your Markdown.": "选择包含 Markdown 相对图片路径的文件夹。",
-      "Title and cover": "标题和封面",
-      "xPoster sets them automatically when the X Article editor allows it.": "当 X 文章编辑器允许时，xPoster 会自动设置它们。",
-      "Choose what xPoster writes into X Article metadata.": "选择 xPoster 要写入 X 文章元信息的内容。",
-      "Set article title": "设置文章标题",
-      "Use frontmatter title or the first H1.": "使用 frontmatter title 或第一个一级标题。",
-      "Set article cover": "设置文章封面",
-      "Use frontmatter cover or the first image.": "使用 frontmatter cover 或第一张图片。",
-      "Success feedback": "成功反馈",
-      "Choose the small celebration shown after a successful write.": "选择写入成功后显示的小反馈。",
-      "Celebration animation": "庆祝动画",
-      "Show a brief celebration on the X page when X reports a completed write.": "当 X 返回写入完成时，在 X 页面显示一次短暂庆祝动画。",
-      "Completion sound": "完成音效",
-      "Play a short local chime after a successful write.": "写入成功后播放一声本地短提示音。",
-      "Sound style": "音效风格",
-      "Soft chime": "轻柔提示",
-      "Warm bell": "温和铃声",
-      "Light pop": "轻快弹响",
-      "Project and author": "项目与作者",
-      "Open the project page or follow updates from the author.": "打开项目页面，或关注作者更新。",
-      "Open GitHub project": "打开 GitHub 项目",
-      "GitHub project": "GitHub 项目",
-      "Follow author on X": "在 X 关注作者",
-      "Embeds and code": "嵌入和代码",
-      "X TARGET": "X 文章",
-      "Workspace sections": "工作区",
-      "Cost, privacy, and control": "成本、隐私和控制",
-      "Publishing workflow": "发布流程",
-      "Advanced command dock": "高级命令栏",
-      "Readiness meter": "准备进度",
-      "Jump to section": "跳转到区域",
-      "Other actions": "其他操作",
-      "Article xPoster will fill": "xPoster 将写入的文章",
-      "No active X Article selected.": "尚未选择 X 文章。",
-      "Current editor text": "当前编辑器文本",
-      "Article review checklist": "文章检查清单",
-      "Article check": "文章检查",
-      "Saved result checklist": "最近发布记录",
-      "Recent publish record": "最近发布记录",
-      "Load Markdown, check X, or write an article to create a record.": "载入 Markdown、检查 X 或写入文章后，这里会生成记录。",
-      "Copy summary": "复制摘要",
-      "Draft saved": "草稿已保存",
-      "No Markdown record saved yet.": "还没有保存 Markdown 记录。",
-      "No linked article yet.": "还没有关联文章。",
-      "Write result": "写入结果",
-      "No write result saved yet.": "还没有写入结果。",
-      "Technical details": "技术详情",
-      "Only needed for troubleshooting or support.": "仅在排查问题或需要支持时查看。",
-      "Technical record": "技术记录",
-      "Copy details": "复制详情",
-      "Copy full record": "复制完整记录",
-      "Save file": "保存文件",
-      "Before you finish": "完成前",
-      "Draft preview": "草稿预览",
-      "Draft editor note": "草稿编辑器说明",
-      "Preview explanation": "预览说明",
-      "Markdown inspector": "Markdown 检查器",
-      "X Article readiness": "X 文章准备状态",
-      "How xPoster will place the draft": "xPoster 如何放置草稿",
-      "What is in your draft": "草稿内容",
-      "Draft contents": "草稿内容",
-      "Fix problems": "修复问题",
-      "Save result": "保存结果",
-      "Copy all": "复制全部",
-      "Copy path": "复制路径",
-      "the folder you cloned or downloaded": "你克隆或下载的文件夹",
-      "X page script": "X 页面脚本",
-      "X file import works": "X 文件导入可用",
-      "xPoster placeholders removed": "xPoster 占位文本已移除",
-      "xPoster loaded": "xPoster 已加载",
-      "Web images": "网页图片",
-      "No web image links in this draft.": "这篇草稿没有网页图片链接。",
-      "X editor": "X 编辑器",
-      "Next": "下一步",
-      "Fix this before importing": "写入前先处理这里",
-      "X Article blocker": "X 文章阻塞项",
-      "Add a Markdown draft first. Open or create an X Article draft.": "先添加 Markdown 草稿，再打开或新建 X 文章草稿。",
-      "Open X Articles so xPoster can load the page script.": "打开 X 文章，让 xPoster 加载页面脚本。",
-      "No X Article is open yet.": "尚未打开 X 文章。",
-      "Paste or choose Markdown before checking X.": "检查 X 前先粘贴或选择 Markdown。",
-      "Paste or choose a Markdown draft before checking X.": "检查 X 前先粘贴或选择 Markdown 草稿。",
-      "Add a draft before checking X.": "检查 X 前先添加草稿。",
-      "Load xPoster as an unpacked extension in Chrome.": "在 Chrome 中加载 xPoster 解包扩展。",
-      "Load xPoster as an unpacked extension in signed-in Chrome.": "在已登录的 Chrome 中加载 xPoster 解包扩展。",
-      "Confirm this xPoster copy is loaded in the signed-in Chrome profile.": "确认这个 xPoster 已加载到已登录的 Chrome 配置中。",
-      "Open X Articles in the active tab.": "在当前标签页打开 X 文章。",
-      "Paste Markdown or choose a file.": "粘贴 Markdown 或选择文件。",
-      "Add Markdown or choose a file.": "添加 Markdown 或选择文件。",
-      "Add a draft or choose a file.": "添加草稿或选择文件。",
-      "X can still open a Markdown file when needed.": "需要时，X 仍可打开 Markdown 文件。",
-      "The article body is not ready yet.": "文章正文尚未准备好。",
-      "This is a recognition preview. Image links stay as text in the draft box; xPoster downloads public images during Write and keeps failed downloads as links.": "这是识别预览。图片链接会作为 Markdown 保留；写入时 xPoster 会下载公开图片，失败的图片保留为链接。",
-      "Each part of the draft will show whether it becomes text, an image, the title, the cover, or an embed.": "草稿的每一部分都会显示将变成正文、图片、标题、封面还是嵌入内容。",
-      "Finish the X Article review before calling this import done.": "完成 X 文章检查后，再确认本次写入完成。",
-      "Post-import review": "导入后检查",
-      "Readiness progress": "准备进度",
-      "Import readiness status": "导入准备状态",
-      "No records match this search.": "没有匹配的记录。",
-      "Clear the search or try a title, file name, URL, or Markdown phrase.": "清空搜索，或换一个标题、文件名、网址、Markdown 片段试试。",
-      "Showing all records. Search can find saved Markdown text.": "正在显示全部记录。搜索可找到已保存的 Markdown 原文。",
-      "Showing matching records.": "正在显示匹配记录。",
-      "saved draft(s). Newest first.": "条可找回草稿，最新在前。",
-      "saved draft(s) found.": "条草稿匹配。",
-      "No recoverable drafts yet.": "还没有可找回的草稿。",
-      "No saved Markdown in this record.": "这条记录没有可找回的 Markdown。",
-      "Untitled Markdown": "未命名 Markdown",
-      "Saved Markdown": "已保存 Markdown",
-      "Draft text": "草稿原文",
-      "Markdown preview": "Markdown 预览",
-      "Last saved": "保存于",
-      "Use": "使用",
-      "Edit": "编辑",
-      "Open": "打开",
-      "Clear records": "清空记录",
-      "Clear all": "全部清空",
-      "Clear saved record history from this browser.": "清空保存在这个浏览器里的记录历史。",
-      "Close": "关闭",
-      "Edit saved Markdown": "编辑已保存的 Markdown",
-      "Saved Markdown": "已保存 Markdown",
-      "No link saved": "没有保存链接",
-      "Open linked page": "打开关联页面",
-      "Written to X": "已写入 X",
-      "Loaded only": "仅载入",
-      "Search can find the saved Markdown text.": "可以搜索已保存的 Markdown 原文。",
-      "Use edited draft": "使用编辑后的草稿",
-      "Copy edited draft": "复制编辑内容",
-      "Use draft": "使用草稿",
-      "Copy text": "复制文本",
-      "Cancel edit": "取消编辑",
-      "Edit this saved Markdown before using it": "使用前可以编辑这份已保存的 Markdown",
-      "Edited Markdown restored to Pending.": "编辑后的 Markdown 已放回编辑器。",
-      "Edited Markdown copied.": "编辑后的 Markdown 已复制。",
-      "Use this saved Markdown in Pending.": "把这份 Markdown 放回编辑器。",
-      "Copy this saved Markdown.": "复制这份 Markdown。",
-      "Edit this saved Markdown.": "编辑这份 Markdown。",
-      "Page URL saved": "已保存网页地址",
-      "Linked page": "关联网页",
-      "Markdown snapshot saved": "已保存 Markdown 快照",
-      "Markdown snapshot not available": "没有可恢复的 Markdown",
-      "Markdown restored": "Markdown 已恢复",
-      "Restore Markdown": "恢复 Markdown",
-      "Copy Markdown": "复制 Markdown",
-      "Markdown restored to Pending.": "Markdown 已恢复到编辑器。",
-      "Markdown copied.": "Markdown 已复制。",
-      "No publish record yet": "还没有记录",
-      "No records yet": "还没有记录",
-      "Write a Markdown draft into X Article. The latest result and activity will appear here.": "载入 Markdown、检查 X 或写入文章后，这里会显示每一步记录。",
-      "Load Markdown, check X, or write an article. Each step will appear here.": "载入 Markdown、检查 X 或写入文章后，每一步都会显示在这里。",
-      "No saved records yet.": "还没有记录。",
-      "No records yet.": "还没有记录。",
-      "Write or check an article to create the first record.": "载入 Markdown、检查或写入文章后会生成第一条记录。",
-      "Load Markdown, run Check, or Write article to create the first record.": "载入 Markdown、运行检查或写入文章后会生成第一条记录。",
-      "All saved drafts cleared.": "已清空所有保存的草稿。",
-
-      "record(s), newest first.": "条记录，最新在前。",
-      "local record(s), newest first.": "条记录，最新在前。",
-      "Draft loaded": "草稿已载入",
-      "Draft ready": "草稿待发布",
-      "Draft updated": "草稿已更新",
-      "Loaded draft": "已载入草稿",
-      "Markdown loaded": "草稿就绪",
-      "Article URL": "文章地址",
-      "Page URL": "网页地址",
-      "Open article": "打开文章",
-      "No article URL yet": "还没有文章地址",
-      "No page URL yet": "还没有网页地址",
-      "Article {id}": "文章 {id}",
-      "X page: {route}": "X 页面：{route}",
-      "Article editor open": "已打开文章编辑器",
-      "X Articles list": "X 文章列表",
-      "No X Article linked yet": "还没有关联 X 文章",
-      "No draft stats": "没有草稿统计",
-      "{count} image(s) uploaded": "{count} 张图片已上传",
-      "{uploaded} image(s) uploaded, {kept} kept as links": "{uploaded} 张图片已上传，{kept} 张保留为链接",
-      Source: "来源",
-      File: "文件",
-      "Dropped file": "拖入文件",
-      "Dropped text": "拖入文本",
-      "Pasted text": "粘贴文本",
-
-      "Restored draft": "已恢复草稿",
-      "Typed draft": "手写草稿",
-      "Queued draft": "待发布草稿",
-      "Pending queue": "待发布队列",
-      "Pending drafts": "待发布草稿",
-      "Pending Markdown queue": "待发布 Markdown 队列",
-      "Drop multiple Markdown files to queue them here.": "拖入多篇 Markdown 后会先放在这里。",
-      "One list: select a draft, then write it.": "一个列表：选中草稿，然后写入。",
-      "Click a draft to edit.": "点击草稿即可编辑。",
-      "No pending drafts": "暂无待发布草稿",
-      "Add one draft or drop Markdown files here.": "添加一篇草稿，或把 Markdown 文件拖到这里。",
-      "Create draft": "新建草稿",
-      "Load this draft": "载入这篇草稿",
-      Current: "当前",
-      Queued: "待处理",
-      Writing: "正在写入",
-      "Write all drafts": "批量写入",
-      "Writing all...": "正在批量写入...",
-      "Write this draft": "写入这篇",
-      "Save only": "仅保存",
-      "Writing queued drafts one by one.": "正在逐篇写入队列草稿。",
-      "Queued drafts are written one by one. Each successful draft leaves the list.": "队列草稿会逐篇写入。成功写入后会从列表移除。",
-      "Stop": "停止",
-      "Stopping...": "正在停止...",
-      "Stop requested. xPoster will stop before the next upload step.": "已请求停止。xPoster 会在下一个上传步骤前停下。",
-      "Writing stopped by user.": "写入已停止。",
-      Stopped: "已停止",
-      "Stop request failed: active X tab did not respond": "停止请求失败：当前 X 标签页没有响应",
-      "Fix the image count in the editor.": "请在编辑框里调整图片数量。",
-      "Close to the image limit.": "已接近图片上限。",
-      [X_ARTICLE_MEDIA_LIMIT_WARNING]: "图片：{count}/{limit}。请先删掉 {extra} 张图再写入。",
-      [X_ARTICLE_MEDIA_HEADROOM_NOTE]: "图片：{count}/{limit}。已接近 X 文章图片上限。",
-      [X_ARTICLE_MEDIA_CAPACITY_NOTE]: "图片：{count}/{limit}。",
-      "Too many images": "图片过多",
-      "X Article media note": "X 文章媒体提醒",
-      "Review before writing": "写入前确认",
-      "Focus the Markdown editor below.": "光标已放到下面的 Markdown 编辑框。",
-      "Review queue": "检查队列",
-      "Write queue": "写入队列",
-      "Write all drafts or edit one.": "批量写入，或打开某一篇单独编辑。",
-      "Write queued drafts": "写入队列草稿",
-      "Ready to write queued drafts one by one.": "可以逐篇写入队列草稿。",
-      "Batch draft writing started.": "开始批量写入草稿。",
-      "Queued draft not found": "未找到队列草稿",
-      "Draft added": "已新增草稿",
-      "Markdown queued": "Markdown 已加入队列",
-      "Queued Markdown": "已加入待发布队列",
-      "Queued Markdown loaded.": "已载入队列中的 Markdown。",
-      "No new Markdown drafts were added.": "没有新的 Markdown 草稿需要加入。",
-      "Drop multiple Markdown files to queue them here. Open one draft when you are ready to write.": "拖入多篇 Markdown 后会先放在这里。准备写入时再打开其中一篇。",
-      Blocks: "块",
-      Step: "阶段",
-      Result: "结果",
-      "Technical details": "技术详情",
-      "Loaded Markdown": "已载入 Markdown",
-      "Import completed": "写入完成",
-      "Import failed": "写入失败",
-      "Check result": "检查结果",
-      "Check blocked": "检查阻断",
-      "Image handling": "图片处理",
-      "Remote images": "网页图片",
-      "Last update": "最后更新",
-      Written: "已写入",
-      Failed: "失败",
-      Blocked: "已阻断",
-      "Check found blockers": "检查发现阻断项",
-      Saved: "已保存",
-      "Ready to write": "可写入",
-      "Ready to write.": "可以写入。",
-      "Checked": "已检查",
-      Draft: "草稿",
-      "Image check": "图片检查",
-      Kind: "类型",
-      Target: "目标",
-      Images: "图片",
-      Title: "标题",
-      Article: "文章",
-      Cover: "封面",
-      "Not run": "未运行",
-      "Target not locked": "未锁定目标",
-      "No image upload result": "没有图片上传结果",
-      "Publish records cleared.": "记录已清空。",
-      "Records cleared.": "记录已清空。",
-      "Checking...": "检查中...",
-      "Diagnostics unavailable": "诊断不可用",
-      "Publishing check started.": "已开始发布前检查。",
-      "Publishing check passed without blockers.": "发布前检查已通过，没有阻塞项。",
-      "Article confirmed: {target}.": "已确认文章：{target}。",
-      "the open X Article": "当前打开的 X 文章",
-      "{kind} record saved at {time}": "{kind}记录已保存，时间 {time}",
-      "Record copied.": "记录已复制。",
-      "Record is ready in the panel.": "记录已在面板中准备好。",
-      "Record package generated": "记录包已生成",
-      "Record package copied.": "记录包已复制。",
-      "Record package is ready in the panel.": "记录包已在面板中准备好。",
-      "Record package saved.": "记录包已保存。",
-      "Publish summary generated": "发布摘要已生成",
-      "Publish summary copied.": "发布摘要已复制。",
-      "Publish summary is ready in the panel.": "发布摘要已在面板中准备好。",
-      "Extension path copied.": "扩展路径已复制。",
-      "Review the article checklist.": "请检查文章清单。",
-      "Live verification runbook focused.": "已聚焦实时验证流程。",
-      "No next action available.": "暂无下一步操作。",
-      "No runbook action available.": "暂无可执行操作。",
-      "No technical record saved yet.": "还没有技术记录。",
-      "Run Check article or Write article to save a technical record.": "运行检查文章或写入文章后会保存技术记录。",
-      "No drafts": "还没有草稿",
-      "{count} found": "找到 {count} 条",
-      "{count} draft(s)": "{count} 条草稿",
-      "Today {time}": "今天 {time}",
-      "Yesterday {time}": "昨天 {time}",
-      "Markdown draft": "Markdown 草稿",
-      "Paste Markdown here, then save it to Pending.": "在这里粘贴 Markdown，然后保存到待发布草稿。",
-      "Choose Markdown file": "选择 Markdown 文件",
-
-      "Supports headings, lists, links, images, tables, tweet links, code blocks, and dividers. Web image links need a one-time Chrome approval; local image paths need a folder in Settings.": "支持标题、列表、链接、图片、表格、推文链接、代码块和分割线。网页图片写入时自动尝试处理；本地图片路径需要在设置里选择文件夹。",
-      "Supports headings, lists, links, images, tables, tweet links, code blocks, and dividers. Nothing is written to X until you click Import.": "支持标题、列表、链接、图片、表格、推文链接、代码块和分割线。点击导入前，不会写入 X。",
-      "Supports headings, links, images, tables, tweet links, code blocks, and dividers. Remote images may ask for permission to read that image site.": "支持标题、链接、图片、表格、推文链接、代码块和分割线。网页图片会在写入时自动尝试处理。",
-      "Supports common Markdown blocks, images, tables, tweet links, code blocks, and dividers. If your draft uses remote image links, Chrome may ask once before xPoster can fetch those images for upload.": "支持常见 Markdown 块、图片、表格、推文链接、代码块和分割线。网页图片可下载时会上传，失败时保留链接。",
-      "Remote image access": "网页图片",
-      "Remote images need one-time site access": "网页图片自动处理",
-      "Allow the image website once": "网页图片",
-      "Allow web images before import": "网页图片",
-      "Web images need one permission": "网页图片自动处理",
-      "Allow web images": "网页图片",
-      "Allow image website": "网页图片",
-      "No remote image URLs detected.": "这篇草稿没有网页图片链接。",
-      "No remote images": "没有网页图片",
-      "No web images": "没有网页图片",
-      "Detect links": "识别链接",
-      "Check images": "图片结果",
-      "Check downloads": "图片结果",
-      "Checking downloads...": "正在处理图片...",
-      "Checking images...": "正在处理图片...",
-      "Images checked": "图片结果",
-      "Image check failed": "图片处理失败",
-      "Image check": "图片结果",
-      "Web image source": "网页图片来源",
-      "Some downloads failed": "部分图片下载失败",
-      "All web images ready": "所有网页图片已就绪",
-      "The saved record includes the full image check result.": "保存的记录会包含完整图片检查结果。",
-      "xPoster will try to download these images while writing. Failed downloads stay as Markdown links.": "写入时会尝试下载这些图片。下载失败的图片会保留为 Markdown 链接。",
-      "Write can continue. Failed images stay as Markdown links; replace private, expired, or anti-hotlink URLs with public links if they must upload.": "可以继续写入。失败图片会保留为 Markdown 链接；如果必须上传，请把私有、过期或防盗链 URL 换成公开链接。",
-      "Not checked": "写入时处理",
-      "Download failed": "下载失败",
-      "Download ready": "可下载",
-      "Allow image site": "网页图片",
-      "Allow image website": "网页图片",
-      "Allowed": "可下载",
-      "Needs permission": "写入时处理",
-      "Needs Chrome permission": "写入时处理",
-      "Needs Chrome approval": "写入时处理",
-      "Chrome asks because these images live on another website. Without this approval, xPoster cannot turn Markdown image links into uploaded images in X.": "这些图片在网页上。写入时 xPoster 会尝试下载，可下载时交给 X 上传；失败时保留链接。",
-      "Chrome asks because these images live on another website. After approval, xPoster checks that each image can be downloaded before it writes anything to X.": "这些图片在网页上。写入时 xPoster 会尝试下载，可下载时交给 X 上传；失败时保留链接。",
-      "Why Chrome asks:": "图片处理：",
-      "these Markdown images live on another website.": "这些 Markdown 图片在另一个网站上。",
-      "Why:": "原因：",
-      "Chrome asks before xPoster reads an image website.": "xPoster 会后台读取图片文件，不读取站点 cookie。",
-      "your Markdown points to images on another website, so Chrome asks before xPoster reads that website.": "你的 Markdown 指向另一个网站上的图片，所以 xPoster 会尝试后台下载图片文件。",
-      "the image is on another website.": "图片在另一个网站上。",
-      "What to do next:": "下一步：",
-      "click Allow image website, then Check downloads.": "直接写入；失败图片会保留为链接。",
-      "What xPoster does:": "xPoster 会做什么：",
-      "What xPoster does not do:": "xPoster 不会做什么：",
-      "it checks every image first. If one image link is temporarily unreachable, import stops and names the failed image.": "它会先检查每张图片。如果某个图片链接暂时不可访问，导入会停止并标出失败图片。",
-      "it does not read unrelated websites or publish your article.": "它不会读取无关网站，也不会替你发布文章。",
-      "Markdown images live on another website.": "Markdown 图片在另一个网站上。",
-      "xPoster uses it for:": "xPoster 用它来：",
-      "Use:": "用途：",
-      "downloading image files so X can upload them.": "下载图片文件，让 X 可以上传。",
-      "downloading those image files so X can upload them.": "下载这些图片文件，让 X 可以上传。",
-      "xPoster will not:": "xPoster 不会：",
-      "Limit:": "限制：",
-      "no unrelated sites, no auto-publishing, no xPoster server.": "不读无关网站、不自动发布、不经过 xPoster 服务器。",
-      "xPoster only reads this image site and never publishes for you.": "xPoster 只读取这个图片网站，也不会替你发布。",
-      "read unrelated sites, publish for you, or send images to an xPoster server.": "读取无关网站、替你发布，或把图片发送到 xPoster 服务器。",
-      "What to do next": "下一步",
-      "No Chrome prompt?": "图片没有上传？",
-      "Click the button below. When Chrome asks, choose Allow. If Chrome does not show a prompt, reload xPoster in chrome://extensions and reopen the X Article tab.": "直接写入即可。失败时，请把图片换成公开、未过期、可直接打开的链接。",
-      "Click Allow image website first. After Chrome allows the site, click Check images if every Markdown image must upload.": "直接写入即可；如果某张网页图片必须上传，请把失败链接换成公开可访问链接。",
-      "Click Allow image website. When Chrome asks for the image site, choose Allow.": "直接写入即可；xPoster 会自动尝试处理网页图片。",
-      "If Chrome does not show a permission prompt, reload xPoster from chrome://extensions and reopen the side panel so the service worker uses the latest permission state.": "如果图片没有上传，请把失败链接换成公开可访问链接后再次写入。",
-      "If Chrome does not show a permission prompt, open chrome://extensions, reload xPoster, reopen the X Article tab and the side panel, then click Allow image website again.": "如果图片没有上传，请把失败链接换成公开可访问链接后再次写入。",
-      "Click Check images for a multi-image draft when every web image must upload. xPoster will list the exact image if an image URL is temporarily unreachable.": "写入时会尝试处理网页图片；某个图片 URL 暂时不可访问时，会保留为链接。",
-      "Check images if this remote image must become an upload.": "写入时会尝试处理这张网页图片；不可访问时保留链接。",
-      "Permission declined": "下载失败",
-      "Remote image access not available in this context.": "当前环境无法处理网页图片。",
-      "All remote image sites are allowed.": "网页图片会在写入时自动尝试处理。",
-      "Image websites are not allowed yet. Write can continue; allow the website when you want xPoster to upload those images.": "写入可以继续；不可下载的图片会保留为 Markdown 链接。",
-      "Chrome will ask once for the image site before xPoster reads these images.": "写入时 xPoster 会尝试处理这些图片。",
-      "Chrome needs your approval before xPoster can fetch these remote image links for upload.": "写入时 xPoster 会尝试下载这些网页图片，用于交给 X 上传。",
-      "Chrome is asking for image access:": "正在处理图片：",
-      "Click Import or Allow image website. Chrome will ask once for this image website.": "点击写入。可下载的图片会交给 X 上传。",
-      "Chrome asks once before xPoster can download Markdown images from this website for X upload.": "写入时 xPoster 会尝试下载网页图片，然后交给 X 上传。",
-      "The image website is allowed. Check every image link if every web image must upload.": "可继续写入。如果某张网页图片必须上传，请替换失败链接。",
-      "Allow the image site first.": "直接写入即可。",
-      "Allow image site first.": "直接写入即可。",
-      "Remote images are allowed.": "网页图片会自动处理。",
-      "Remote images need permission.": "网页图片会自动尝试处理。",
-      "Remote images are not required.": "这篇草稿没有网页图片。",
-      "Request optional access only for these image URLs.": "只处理这些图片 URL。",
-      "Remote image sites are not allowed yet. Click Allow image site if you want xPoster to upload those images.": "这些网页图片会在写入时尝试下载；失败时保留为链接。",
-      "Remote image access can only be granted from the installed xPoster extension side panel.": "网页图片会在已安装的 xPoster 侧边栏中自动处理。",
-      "Open the installed xPoster side panel to allow this image website.": "请打开 xPoster 侧边栏后再次写入。",
-      "Click Allow image site so Chrome can ask for image-site access.": "再次写入即可尝试处理网页图片。",
-      "Remote image permission was declined.": "网页图片下载失败。",
-      "Remote image permission granted.": "网页图片可下载。",
-      "Remote image permission already granted.": "网页图片已可下载。",
-      "Remote image site is not supported in this low-permission build.": "当前版本无法下载这张网页图片。",
-      "Image website allowed.": "图片可下载。",
-      "Image website allowed": "图片可下载",
-      "Image website already allowed.": "图片已可下载。",
-      "Image website needs approval": "网页图片待处理",
-      "Remote image permission pending": "网页图片待处理",
-      "Allow the remote image site to upload remote URLs.": "网页图片会在写入时自动尝试处理。",
-      "Remote image sites are allowed.": "网页图片会在写入时自动尝试处理。",
-      "Remote image URLs are allowed, but image download has not been checked yet.": "网页图片会在写入时自动尝试处理。",
-      "Remote image URLs are allowed and every image was downloaded successfully.": "网页图片已可下载。",
-      "Every web image is allowed and downloadable.": "每张网页图片都可下载。",
-      "web image(s). Allow this image website once, then check downloads.": "张网页图片。写入时会自动尝试处理。",
-      "Needs approval": "写入时处理",
-      "xPoster asks only for this image website.": "xPoster 只处理这个图片来源。",
-      "xPoster only asks for this image website.": "xPoster 只处理这个图片来源。",
-      "Click Allow image website, then choose Allow in Chrome.": "写入时会自动尝试处理网页图片。",
-      "Reload xPoster in chrome://extensions, reopen the X Article tab and side panel, then try again.": "在 chrome://extensions 重新加载 xPoster，重新打开 X 文章标签页和侧边栏，然后再试。",
-      "Remote image URLs are allowed, but some images could not be downloaded.": "有部分网页图片无法下载。",
-      "Remote image URLs are allowed, but image upload has not been tried yet.": "网页图片会在写入时尝试上传。",
-      "Old Markdown importer is still active in this X tab.": "旧的 Markdown 导入插件仍然在这个 X 标签页中运行。",
-      "Refresh or reopen the X Article tab so only xPoster handles this import.": "请刷新或重新打开 X 文章标签页，确保只有 xPoster 处理这次导入。",
-      "Old importer detected": "检测到旧导入插件",
-      "Refresh X Article tab": "刷新 X 文章标签页",
-      "Refresh X": "刷新 X",
-      "Old Markdown importer detected": "检测到旧 Markdown 导入插件",
-      "The original X Article Markdown Paste script is still active in this tab. Refresh or reopen the X Article tab before importing so image markers are handled only by xPoster.": "原来的 X Article Markdown Paste 脚本仍然在这个标签页中运行。导入前请刷新或重新打开 X 文章标签页，确保图片标记只由 xPoster 处理。",
-      "Images recognized, files blocked": "已识别图片，但文件不可下载",
-      "xPoster recognized these Markdown images, but it cannot upload them until Chrome can download each image file. If a COS signed URL fails, open it in a normal tab; if it does not load there, regenerate a public image link and check downloads again.": "xPoster 已识别这些 Markdown 图片；写入时会尝试下载并交给 X 上传。如果某个 COS 签名链接打不开，请换成公开可访问链接后再次写入。",
-      "Checking remote images...": "正在处理网页图片...",
-      "Check remote images before expecting uploads.": "网页图片会在写入时自动尝试处理。",
-      "Image website allowed. Check downloads if every image must upload.": "可继续写入。如果某张图片必须上传，请替换失败链接。",
-      "Click Check downloads if every web image must become an uploaded X image.": "如果每张网页图片都必须上传，请把失败链接换成公开可访问链接。",
-      "Download blocked": "下载受阻",
-      "Some web images could not be downloaded.": "有些网页图片无法下载。",
-      Allow: "继续",
-
-      "No title yet": "暂无标题",
-      "Article body": "文章正文",
-      "Reading preview": "阅读预览",
-      "Publishing check": "发布检查",
-      "Write Markdown to inspect the article structure.": "输入 Markdown 以检查文章结构。",
-      "The preview focuses on publishing structure: headings, media, tables, code, tweet embeds, and the final import plan.": "预览聚焦发布结构：标题、媒体、表格、代码、推文嵌入和最终导入计划。",
-      "This preview shows what xPoster found and what it will move into X.": "这里会显示 xPoster 识别到什么，以及会把什么搬进 X。",
-      "Preview is the conversion check": "预览是转换检查",
-      "The draft box stays as text. This section shows what xPoster recognized before it fills X.": "草稿仍以 Markdown 保存。这里显示 xPoster 在填入 X 前识别到了什么。",
-      "The selected draft stays as Markdown. This section shows what xPoster recognized before it fills X.": "选中的草稿仍以 Markdown 保存。这里显示 xPoster 在填入 X 前识别到了什么。",
-      "This is a recognition preview. Image links are still text in the draft box, but xPoster will upload them into X after the image website is allowed and downloads pass.": "这是识别预览。图片链接仍以 Markdown 保存；写入时可下载的图片会上传进 X。",
-      "image links convert during Import": "图片链接会在导入时转换",
-      "Import plan": "导入计划",
-      "What xPoster will do": "xPoster 会做什么",
-      "Load Markdown to see the plain-language import steps.": "加载 Markdown 后查看容易理解的导入步骤。",
-      "Load Markdown to see paste, upload, and marker replacement steps.": "加载 Markdown 后查看写入正文、上传媒体和放置特殊内容的步骤。",
-      "Load Markdown to see how xPoster will write text, upload media, and place special content.": "加载 Markdown 后查看 xPoster 如何写入文本、上传媒体并放置特殊内容。",
-      "No plan generated.": "尚未生成计划。",
-      "Text blocks": "文本块",
-      "Special blocks": "特殊块",
-      "Local images": "本地图片",
-      "Start": "开始",
-      "Paste a draft or choose a Markdown file.": "粘贴草稿或选择 Markdown 文件。",
-      "Paste Markdown to see what xPoster will move into X.": "粘贴 Markdown 后查看 xPoster 会搬进 X 的内容。",
-      "Paste Markdown to preview.": "粘贴 Markdown 后预览。",
-      "Paste Markdown to read it here.": "粘贴 Markdown 后在这里阅读。",
-      "Paste Markdown to check conversion.": "粘贴 Markdown 后检查转换结果。",
-      "Preview appears here.": "预览会显示在这里。",
-      "Reading preview appears here.": "阅读预览会显示在这里。",
-      "This preview shows headings, paragraphs, images, tables, tweet links, code, and dividers before anything is written to X.": "在写入 X 之前，这里会显示标题、段落、图片、表格、推文链接、代码和分割线。",
-      "Write text": "写入正文",
-      "Upload image": "上传图片",
-      "Place block": "放置内容",
-      Title: "标题",
-      None: "无",
-      Images: "图片",
-      Tables: "表格",
-      Tweets: "推文",
-      Editor: "编辑器",
-      "Open X": "打开 X",
-      "X Article tab": "X 文章标签页",
-      Unknown: "未知",
-      Vault: "素材库",
-      Optional: "可选",
-      "Advanced diagnostics": "高级诊断",
-      "Troubleshooting details": "排查详情",
-      "Open only if something fails": "出问题时再打开",
-      "Details and troubleshooting": "详情和排查",
-      "More details": "更多详情",
-      "Open this when you want the checks, import plan, or exact problem.": "想看检查项、导入计划或具体问题时打开这里。",
-      "Open this when the check or import needs technical details.": "检查或导入需要技术细节时再打开这里。",
-      "xPoster will point you here when it needs more details.": "需要更多细节时，xPoster 会提示你打开这里。",
-      "Details for troubleshooting": "排查详情",
-      "Open this only when a check or import fails.": "只有检查或导入失败时再打开这里。",
-      "More details if something fails": "出错时查看更多细节",
-      "Open this when xPoster asks you to fix something.": "当 xPoster 提示需要处理时再打开这里。",
-      "Open this if a check or import asks you to fix something.": "当检查或导入提示需要处理时再打开这里。",
-      "Open this only when xPoster asks you to fix something.": "只有 xPoster 要求你修复问题时再打开这里。",
-      "Page context, conversion details, import ledger, and recovery trail.": "页面状态、转换明细、导入记录和修复线索。",
-      "Target context": "当前 X 页面",
-      "Current X Article": "当前 X 文章",
-      "No active X Article target.": "没有活动的 X 文章目标。",
-      Idle: "空闲",
-      Route: "页面",
-      "X page": "X 页面",
-      "No X tab": "没有 X 标签页",
-      "Article ID": "文章 ID",
-      "Page path": "页面路径",
-      "Article identifier": "文章标识",
-      Page: "页面",
-      "Editor sample": "编辑器片段",
-      "Open or create an X Article draft before import.": "导入前请打开或创建 X 文章草稿。",
-      "Open or create an X Article draft before importing.": "导入前请打开或创建 X 文章草稿。",
-      "Issue queue": "待处理问题",
-      "Current issues": "当前问题",
-      "What needs attention": "需要处理什么",
-      "Load Markdown to see the active blockers.": "加载 Markdown 后查看当前阻塞项。",
-      "Paste Markdown or choose a file.": "粘贴 Markdown 或选择文件。",
-      "Conversion map": "转换说明",
-      "What will be imported": "将导入的内容",
-      "Content xPoster found": "xPoster 识别到的内容",
-      "What xPoster found in your draft": "xPoster 在草稿中识别到什么",
-      "Load Markdown to see how every supported block will import.": "加载 Markdown 后查看每种支持块的导入方式。",
-      "Load Markdown to see text, images, tables, tweets, code, and dividers.": "加载 Markdown 后查看文本、图片、表格、推文、代码和分隔线。",
-      Cover: "封面",
-      Text: "文本",
-      Code: "代码",
-      Dividers: "分隔线",
-      "Local vault": "本地图片文件夹",
-      "Waiting for frontmatter or first H1.": "等待 frontmatter 或第一个 H1。",
-      "Waiting for frontmatter cover or first image.": "等待 frontmatter cover 或第一张图片。",
-      "Headings, paragraphs, lists, quotes, links, and inline styles.": "标题、段落、列表、引用、链接和行内样式。",
-      "Will write the body after title and cover setup starts.": "会在标题和封面开始处理后写入正文。",
-      "Prepared as files, then uploaded through X.": "准备为文件，然后通过 X 上传。",
-      "Rendered as images before upload.": "上传前渲染为图片。",
-      "Inserted as X tweet atomic blocks.": "作为 X 推文嵌入插入。",
-      "Inserted as X Markdown/code atomic blocks.": "作为 X 代码块插入。",
-      "Inserted as X divider atomic blocks.": "作为 X 分隔线插入。",
-      "Inserted as embedded tweets in X.": "作为 X 推文嵌入插入。",
-      "Inserted as code blocks in X.": "作为 X 代码块插入。",
-      "Inserted as dividers in X.": "作为 X 分隔线插入。",
-      "Relative image paths need a readable folder.": "相对图片路径需要可读取文件夹。",
-      "Import ledger": "导入明细",
-      "Block-by-block plan": "逐块导入计划",
-      "Detailed import plan": "详细导入计划",
-      "What xPoster will do": "xPoster 将执行什么",
-      "How the draft will be placed": "草稿会怎样放入 X",
-      "Load Markdown to see each block's import path.": "加载 Markdown 后查看每个内容块会如何导入。",
-      "Load Markdown to see what each block will become.": "加载 Markdown 后查看每个内容块会变成什么。",
-      "Load Markdown to see how each part will be handled.": "加载 Markdown 后查看每一部分会如何处理。",
-      "No draft loaded": "未加载草稿",
-      "No draft loaded.": "未加载草稿。",
-      "Each Markdown block will be mapped to HTML paste, media upload, atomic replacement, or metadata.": "每个 Markdown 块会显示为文本、媒体、特殊内容、标题或封面。",
-      "Each Markdown block will show whether it becomes text, media, special content, title, or cover.": "每个 Markdown 块会显示为文本、媒体、特殊内容、标题或封面。",
-      "Each Markdown block will show whether it becomes text, media, title, cover, or another X content block.": "每个 Markdown 块会显示为文本、媒体、标题、封面或其他 X 内容块。",
-      "Each part of the draft will show whether it becomes text, media, title, cover, or another article item.": "草稿里的每一部分会显示为文本、媒体、标题、封面或其他文章内容。",
-      "Draft review": "草稿提示",
-      "Draft notes": "草稿提示",
-      "Write Markdown to get publishing notes.": "输入 Markdown 获取发布提示。",
-      "Publishing check": "发布前检查",
-      "Ready check": "准备检查",
-      "Before importing": "导入前检查",
-      "Check before import": "导入前检查",
-      "Draft, target, editor bridge, uploads, and local assets.": "检查草稿、X 文章、编辑器连接、上传能力和本地图片。",
-      "Draft, X Article, editor connection, uploads, and local images.": "检查草稿、X 文章、编辑器连接、上传能力和本地图片。",
-      "Checks the draft, X Article tab, editor, images, and import plan.": "检查草稿、X 文章编辑页、编辑器、图片和导入计划。",
-      "Paste Markdown to begin.": "粘贴 Markdown 开始。",
-      "Open an X Articles tab.": "打开 X 文章 标签页。",
-      "Target lock": "文章匹配",
-      "Article match": "文章匹配",
-      "Current article": "当前文章",
-      "Run Check to lock the current article context.": "运行检查以锁定当前文章上下文。",
-      "Run Check so xPoster confirms it will use this article.": "点击检查，确认 xPoster 会使用这篇文章。",
-      "Click Check X page so xPoster confirms it will use this article.": "点击检查文章，确认 xPoster 会使用这篇文章。",
-      "Click Check article so xPoster confirms it will use this article.": "点击检查文章，确认 xPoster 会使用这篇文章。",
-      "Waiting for route status.": "等待 X 页面状态。",
-      "Waiting for X page status.": "等待 X 页面状态。",
-      "Editor content": "已有内容",
-      "Existing content": "已有内容",
-      "Run Check to see whether the target draft already has content.": "运行检查以确认目标草稿是否已有内容。",
-      "Click Check X page to see whether the target draft already has content.": "点击检查文章，确认目标草稿是否已有内容。",
-      "Click Check article to see whether the target draft already has content.": "点击检查文章，确认目标草稿是否已有内容。",
-      "Run a check with the X tab active.": "在 X 标签页活动时运行检查。",
-      "X editor access": "X 编辑器访问",
-      "Can write to X": "可写入 X",
-      "Open X Articles before locking the target.": "锁定目标前请先打开 X 文章。",
-      "No X Article editor detected.": "未检测到 X 文章编辑器。",
-      "No existing editor content detected.": "未检测到现有编辑器内容。",
-      Uploads: "上传",
-      "Image uploads": "图片上传",
-      "No image upload requirement detected yet.": "尚未检测到图片上传需求。",
-      "No image or table uploads required.": "无需上传图片或表格。",
-      Assets: "素材",
-      "Local image folder is optional.": "本地图片文件夹是可选项。",
-      "No local image paths detected.": "未检测到本地图片路径。",
-      "Remote images": "网页图片",
-      "Remote image URLs are already allowed.": "网页图片会在写入时自动尝试处理。",
-      "Remote image URLs need permission before upload.": "网页图片写入时会自动尝试处理。",
-      "Web image links need approval before upload.": "网页图片链接会在写入时自动尝试处理。",
-      "Web image links need approval": "网页图片链接会自动处理",
-      "Web images can upload after one Chrome approval": "网页图片可下载时即可上传",
-      "Allow image website first.": "直接写入即可。",
-      "Allow the image website.": "直接写入即可。",
-      "Allow site": "网页图片",
-      "Check X": "检查 X",
-      "Check images": "图片结果",
-      Plan: "计划",
-      "No import plan generated yet.": "尚未生成导入计划。",
-      "No import plan available yet.": "尚无可用导入计划。",
-      "Execution timeline": "导入步骤",
-      "Import steps": "导入步骤",
-      "Load Markdown to see how xPoster will move through X.": "加载 Markdown 后查看 xPoster 在 X 中的执行流程。",
-      "Load Markdown to see the steps xPoster will run.": "加载 Markdown 后查看 xPoster 会执行哪些步骤。",
-      "Parse Markdown": "解析 Markdown",
-      "Waiting for a draft.": "等待草稿。",
-      "Prepare media": "准备媒体",
-      "Images and tables will be prepared after parsing.": "图片和表格会在解析后准备。",
-      "Title and cover will be prepared first when available.": "有标题和封面时会优先准备。",
-      "Paste HTML": "写入正文",
-      "Write article body": "写入正文",
-      "The generated HTML body is not ready yet.": "生成的 HTML 正文尚未准备好。",
-      "The article body is not ready yet.": "正文尚未准备好。",
-      "Replace markers": "放置特殊内容",
-      "Place special content": "放置特殊内容",
-      "Place embeds and code": "放置嵌入和代码",
-      "Draft.js bridge status is unknown.": "X 编辑器状态未知。",
-      "Editor connection status is unknown.": "X 编辑器状态未知。",
-      "X editor status is unknown.": "X 编辑器状态未知。",
-      "Set title and cover": "设置标题和封面",
-      "Metadata will be attempted when available.": "可用时会尝试设置标题和封面。",
-      "Title will be applied when X allows it.": "X 允许时会设置标题。",
-      "Cover will be applied when X allows it.": "X 允许时会设置封面。",
-      "Title and cover will be applied when X allows it.": "X 允许时会设置标题和封面。",
-      "Title and cover are handled before the body when X allows it.": "X 允许时会先处理标题和封面。",
-      "Title is set first; body images keep Markdown order, and the cover is matched after upload.": "会先设置标题；正文图片保持 Markdown 顺序，封面在上传后匹配。",
-      "No title or cover is available to apply.": "没有可设置的标题或封面。",
-      "Capture evidence": "保存记录",
-      "Save import record": "保存导入记录",
-      "Save a run record": "保存运行记录",
-      "No diagnostics or import evidence captured yet.": "尚未保存检查或导入记录。",
-      "No check or import record saved yet.": "尚未保存检查或导入记录。",
-      "Nothing saved yet.": "尚未保存任何记录。",
-      "Paste or load Markdown before any import work can start.": "开始任何导入工作前，请先粘贴或加载 Markdown。",
-      "Live import progress": "导入进度",
-      "Import progress": "导入进度",
-      "Import status": "导入状态",
-      "Writing status": "写入进度",
-      "No import event received yet.": "尚未收到导入事件。",
-      "Waiting for a draft or import action.": "等待草稿或导入操作。",
-      "Waiting for Markdown or Write.": "等待 Markdown 或写入操作。",
-      "Waiting for import": "等待导入",
-      "Nothing is running": "当前没有运行任务",
-      "Drop or paste a draft, then click Write to X draft.": "拖入或粘贴草稿后，点击写入到 X 草稿。",
-      "Article writing progress": "文章写入进度",
-      "No writing updates yet": "暂无写入更新",
-      "Write progress appears here while xPoster fills X.": "xPoster 写入 X 时，这里会显示进度。",
-      "Run Import to stream parser, media, bridge, and completion events from the active X tab.": "运行导入后，侧边栏会显示当前 X 标签页中的导入进度。",
-      "Run Import to see what xPoster is doing in the active X tab.": "运行导入后查看 xPoster 在当前 X 标签页里的进度。",
-      "Run Import to see each step while xPoster fills the active X Article.": "运行导入后查看 xPoster 填写当前 X 文章 的每一步。",
-      "No live events": "暂无导入更新",
-      "No import updates yet": "暂无导入更新",
-      "The side panel will record status, parse, completion, and error events during import.": "导入时侧边栏会显示进度和错误。",
-      "The side panel will show progress and errors while importing.": "导入时侧边栏会显示进度和错误。",
-      Recovery: "下一步修复",
-      "If something goes wrong": "如果出错",
-      "No failure captured yet.": "尚未捕获失败。",
-      "No problem found yet.": "尚未发现问题。",
-      "Current blocker and recovery action.": "当前需要先处理的问题。",
-      "Resolve import gate": "处理导入前问题",
-      "Keep diagnostics close": "保留恢复记录",
-      "Keep a recovery record": "保留恢复记录",
-      "Save what happened": "保存发生了什么",
-      "Run Check or Import to create a recovery trail if X changes.": "运行检查或导入，记录发生了什么，方便 X 变化时排查。",
-      "Run Check or Import to record what happened if X changes.": "运行检查或导入，记录发生了什么，方便 X 变化时排查。",
-      "Run Check or Import so xPoster can show the exact problem if X changes.": "运行检查或导入，这样 X 变化时 xPoster 能显示具体问题。",
-      "Use Check X page or Import so xPoster can show the exact problem if X changes.": "使用检查文章或导入，这样 X 变化时 xPoster 能显示具体问题。",
-      "Use Check article or Import so xPoster can show the exact problem if X changes.": "使用检查文章或导入，这样 X 变化时 xPoster 能显示具体问题。",
-      "Import to X Article": "导入到 X 文章",
-      "Open X Articles": "打开 X 文章",
-      "Import to X": "导入到 X",
-      "Import draft": "导入",
-      "Write Article": "写入文章",
-      "2. Write Article": "2. 写入文章",
-      "Write to X Article": "写入 X 文章",
-      "Write to X draft": "写入到 X 草稿",
-      "Write article": "写入文章",
-      "Write all drafts": "批量写入",
-      "Writing all...": "正在批量写入...",
-      "Write this draft": "写入这篇",
-      "Save only": "仅保存",
-      "Add Markdown first": "先放入 Markdown",
-      "Article written": "文章已写入",
-      "Writing article": "正在写入文章",
-      "Ready to write. Web images that Chrome cannot read will stay as Markdown links.": "可以写入。Chrome 暂时无法读取的网页图片会保留为 Markdown 图片链接。",
-      "Uses the current X Article if one is open. Otherwise xPoster creates a new one.": "如果当前已经打开 X 文章，就写入当前文章；否则 xPoster 会新建一篇。",
-      "Uses current X Article, or creates one.": "使用当前 X 文章，或新建一篇。",
-      "Paste Markdown first.": "请先粘贴 Markdown。",
-      "Add Markdown first": "先放入 Markdown",
-      "Paste or drop Markdown into the editor above.": "先添加或拖入 Markdown 草稿。",
-      "Add a Markdown draft first.": "请先添加 Markdown 草稿。",
-      "Writing queued drafts one by one.": "正在逐篇写入队列草稿。",
-      "Queued drafts are written one by one. Each successful draft leaves the list.": "队列草稿会逐篇写入。成功写入后会从列表移除。",
-      "Stop": "停止",
-      "Stopping...": "正在停止...",
-      "Stop requested. xPoster will stop before the next upload step.": "已请求停止。xPoster 会在下一个上传步骤前停下。",
-      "Writing stopped by user.": "写入已停止。",
-      Stopped: "已停止",
-      "Stop request failed: active X tab did not respond": "停止请求失败：当前 X 标签页没有响应",
-      "Fix the image count in the editor.": "请在编辑框里调整图片数量。",
-      "Close to the image limit.": "已接近图片上限。",
-      [X_ARTICLE_MEDIA_LIMIT_WARNING]: "图片：{count}/{limit}。请先删掉 {extra} 张图再写入。",
-      [X_ARTICLE_MEDIA_HEADROOM_NOTE]: "图片：{count}/{limit}。已接近 X 文章图片上限。",
-      [X_ARTICLE_MEDIA_CAPACITY_NOTE]: "图片：{count}/{limit}。",
-      "Too many images": "图片过多",
-      "X Article media note": "X 文章媒体提醒",
-      "Review before writing": "写入前确认",
-      "Focus the Markdown editor below.": "光标已放到下面的 Markdown 编辑框。",
-      "Review queue": "检查队列",
-      "Write queue": "写入队列",
-      "Write all drafts or edit one.": "批量写入，或打开某一篇单独编辑。",
-      "Write queued drafts": "写入队列草稿",
-      "Ready to write queued drafts one by one.": "可以逐篇写入队列草稿。",
-      "Batch draft writing started.": "开始批量写入草稿。",
-      "Queued draft not found": "未找到队列草稿",
-      "Writing into X. You can watch the final result in the X Article tab.": "正在写入 X。可以在 X 文章标签页查看结果。",
-      "Writing into the X draft. You can watch the final result in the X Article tab.": "正在写入 X 草稿。可以在 X 文章标签页查看结果。",
-      "Writing...": "正在写入...",
-      "Writing to X draft...": "正在写入 X 草稿...",
-      "Writing article started.": "开始写入文章。",
-      "Writing queued": "写入已排队",
-      "Writing started from side panel.": "已从侧边栏开始写入。",
-      "Writing complete in": "写入完成，用时",
-      "media warning(s).": "个媒体提醒。",
-      "Writing complete": "写入完成",
-      "Writing failed": "写入失败",
-      "Writing finished.": "写入完成。",
-      "Writing": "正在写入",
-      "Article is written.": "文章已写入。",
-      "Written. Review and publish in X.": "已写入。请在 X 中检查并发布。",
-      "Written. Review in X.": "已写入，请在 X 中检查。",
-      "Markdown ready.": "Markdown 已准备好。",
-      "Ready. xPoster will fill the open X Article, then you review it before publishing.": "准备好了。xPoster 会填入打开的 X 文章草稿，然后由你检查并发布。",
-      "Local images": "本地图片",
-      "Local image folder": "本地图片文件夹",
-      "Not configured": "未配置",
-      "Choose from an active X page": "从活动 X 页面选择",
-      "Choose from an active X page when Markdown uses relative image paths.": "当 Markdown 使用相对图片路径时，请从活动 X 页面选择文件夹。",
-      "xPoster will ask when a Markdown draft uses local image paths.": "当 Markdown 草稿使用本地图片路径时，xPoster 会再提示选择文件夹。",
-      "When a draft uses relative image paths, choose the folder that contains them.": "当草稿使用相对图片路径时，请选择包含这些路径的文件夹。",
-      "No folder connected. xPoster will ask when a draft needs local images.": "尚未连接文件夹。草稿需要本地图片时，xPoster 会再提示。",
-      "Local image folder set: {name}.": "本地图片文件夹已设置：{name}。",
-      "Local image folder selection skipped.": "已跳过本地图片文件夹选择。",
-      "Local image folder cleared.": "本地图片文件夹已清除。",
-      "Local image folder setup failed: {error}": "本地图片文件夹设置失败：{error}",
-      "Could not clear local image folder: {error}": "无法清除本地图片文件夹：{error}",
-      "open an X page first": "请先打开 X 页面",
-      "Local image folder needed": "需要本地图片文件夹",
-      "Local image path blocked": "本地图片路径已阻止",
-      "Choose the local image folder before writing.": "写入前请先选择本地图片文件夹。",
-      Choose: "选择",
-      Clear: "清除",
-      "Last import": "上次导入",
-      "Special blocks": "特殊块",
-      Elapsed: "耗时",
-      "Live verification": "最终验证",
-      "Review after import": "导入后检查",
-      "Finish after import": "导入后收尾",
-      "After import": "导入后",
-
-      "Confirm the X Article looks right before you finish.": "完成前确认 X 文章看起来正确。",
-      Focus: "聚焦",
-
-      "Open target": "打开目标",
-      "Open article": "打开文章",
-      "Use an active X Articles tab.": "使用当前 X 文章编辑页。",
-      "Check bridge": "检查编辑器连接",
-      "Check editor": "检查编辑器",
-      "Check X editor": "检查 X 编辑器",
-      "Make sure xPoster can reach the X editor and upload media.": "确认 xPoster 能连接 X 编辑器并上传媒体。",
-      "Make sure xPoster can reach the article editor and upload images.": "确认 xPoster 能连接文章编辑器并上传图片。",
-      "Verify Draft.js and upload handler readiness.": "检查 X 编辑器和图片上传是否可用。",
-      "Import draft": "导入",
-      "Import only after the gate is ready.": "发布前检查通过后再导入。",
-      "Import only after the check passes.": "发布前检查通过后再导入。",
-      "Inspect result": "检查结果",
-      "Review in X": "在 X 中检查",
-      "Check the imported title, formatting, images, tables, embeds, code, and dividers.": "检查导入后的标题、格式、图片、表格、嵌入、代码和分隔线。",
-      "Record title, formatting, media, embeds, atomic blocks, markers, and diagnostics.": "检查标题、格式、图片、表格、推文、代码和分隔线。",
-      Review: "复查",
-      "Package evidence": "保存记录",
-      "Save records": "保存记录",
-      "Save a local record": "保存本地记录",
-      "Copy or save a local record of the import.": "复制或保存本次导入的本地记录。",
-      "Copy or save the final evidence package.": "复制或保存最终证据包。",
-      Package: "打包",
-      "Article review": "文章检查",
-      "Review in X": "在 X 中检查",
-      "Tick what you confirmed in the X Article after import.": "导入后，把你已在 X 文章中确认的项目勾上。",
-      "Proof deck": "完成记录",
-      "Completion records": "完成记录",
-      "Saved run checklist": "保存的运行清单",
-      "Saved import checklist": "保存导入清单",
-      "This import is complete only after you review the X Article.": "你检查完 X 文章后，这次导入才算完成。",
-      "Live completion is unproven until the X pass is recorded.": "记录 X 文章结果后，才能确认本次运行完成。",
-      "This run is complete only after the X Article result is recorded.": "记录 X 文章结果后，才能确认本次运行完成。",
-      Path: "路径",
-      Copy: "复制",
-      "Loaded unpacked": "已加载解包扩展",
-
-      "Extension loaded": "扩展已加载",
-      "Confirm this folder is loaded in the signed-in Chrome profile.": "确认此文件夹已加载到已登录的 Chrome 配置中。",
-      "Confirm xPoster is loaded in the signed-in Chrome profile.": "确认 xPoster 已加载到已登录的 Chrome 配置中。",
-      "Load this folder as an unpacked extension in Chrome.": "在 Chrome 中将此文件夹作为解包扩展加载。",
-      "Editor bridge": "编辑器连接",
-      "Editor connection": "编辑器连接",
-      "Run diagnostics after an article editor opens.": "文章编辑器打开后运行检查。",
-      "Run Check after an article editor opens.": "文章编辑器打开后运行检查。",
-      "Click Check article after an article editor opens.": "文章编辑器打开后点击检查文章。",
-      "Run Check after the X Article editor is visible.": "X 文章编辑器可见后运行检查。",
-      "Click Check article after the X Article editor is visible.": "X 文章编辑器可见后点击检查文章。",
-      "Import run": "导入运行",
-      "Import completed": "导入已完成",
-      "No import evidence captured.": "未捕获导入证据。",
-      "No import record saved yet.": "尚未保存导入记录。",
-      "Article result": "文章结果",
-      "Article reviewed": "文章已检查",
-      "0/9 final result checks recorded.": "已记录 0/9 项最终结果检查。",
-      "Evidence package": "记录包",
-      "Saved record package": "记录包",
-      "Saved records": "已保存记录",
-      "Save or copy results": "保存或复制结果",
-      "Copy or save after the final result is complete.": "最终结果完成后复制或保存。",
-      "Needs import evidence plus a complete live result checklist.": "需要导入证据和完整实时结果清单。",
-      "Needs an import record and a complete article review.": "需要导入记录和完整文章检查。",
-      "Completion audit": "最终检查",
-      "Final checklist": "最终检查",
-      "Final completion requires live X evidence.": "最终完成需要 X 实测证据。",
-      "Finish the X Article review before treating this run as done.": "完成 X 文章检查后，才算本次运行完成。",
-      "Final completion requires a real X Article review.": "最终完成需要真实 X 文章检查。",
-      "Unpacked extension": "解包扩展",
-      "Load xPoster in the signed-in Chrome profile.": "在已登录的 Chrome 配置中加载 xPoster。",
-      "Load this folder in the signed-in Chrome profile.": "在已登录的 Chrome 配置中加载此文件夹。",
-      "Load the xPoster folder as an unpacked extension in signed-in Chrome.": "在已登录 Chrome 中将 xPoster 文件夹加载为解包扩展。",
-
-      "Markdown draft": "Markdown 草稿",
-      "Use a real Markdown draft.": "使用真实 Markdown 草稿。",
-      "Paste Markdown before live verification.": "检查前请粘贴 Markdown。",
-      "Bridge and upload": "编辑器和上传",
-      "Editor and upload": "编辑器和上传",
-      "Editor and media": "编辑器和媒体",
-      "Editor and images": "编辑器和图片",
-      "Run diagnostics in the live X editor.": "在实时 X 编辑器中运行检查。",
-      "Run Check in the live X editor.": "在实时 X 编辑器中运行检查。",
-      "Click Check X page in the live X editor.": "在实时 X 编辑器中点击检查文章。",
-      "Click Check article in the live X editor.": "在实时 X 编辑器中点击检查文章。",
-      "Import evidence": "导入记录",
-      "Import record": "导入记录",
-      "No import run captured yet.": "尚未记录导入运行。",
-      "No import run recorded yet.": "尚未记录导入运行。",
-      "Record final article checks after import.": "导入后记录最终文章检查。",
-      "Page import path": "页面导入路径",
-      "X page import button": "X 页面导入按钮",
-      "Markdown file import": "Markdown 文件导入",
-      "Verify the X-page import button and file picker.": "验证 X 页面导入按钮和文件选择器。",
-      "Verify the file picker can import a Markdown draft.": "验证文件选择器可以导入 Markdown 草稿。",
-      "Verify the X Articles page import button/file picker path.": "验证 X 文章页面导入按钮/文件选择器路径。",
-      "Needs import evidence and a complete live result checklist.": "需要导入证据和完整实时结果清单。",
-      "Evidence and audit details": "记录和最终检查",
-      "Records and audit details": "记录和最终检查",
-      "Saved records and final checks": "保存记录和最终检查",
-      "Local import records, final audit, and raw diagnostic package.": "本地导入记录、最终检查和原始诊断包。",
-      "Open this only when you need a copy of the run details.": "只有需要复制运行详情时再打开。",
-      "Import records": "导入记录",
-      "Saved import records": "已保存的导入记录",
-      "Open this when you need to copy or save what happened.": "需要复制或保存本次发生了什么时再打开。",
-      "Open this when you need to copy or save the import result.": "需要复制或保存导入结果时打开这里。",
-      "Open this after Check or Import when you need a local record.": "检查或导入后，需要本地记录时再打开这里。",
-      "Completion proof, final audit, and raw evidence package.": "完成记录、最终检查和原始记录包。",
-      "Live result": "实时结果",
-      "Record the final X Article result after import.": "导入后记录最终 X 文章结果。",
-      Reset: "重置",
-      "Title set": "标题已设置",
-
-      "The title from your selected draft.": "选中草稿里的标题。",
-      "Text formatting": "文本格式",
-      "Heading 1": "一级标题",
-      "Heading 2": "二级标题",
-      "Heading 3": "三级标题",
-      "Heading 4": "四级标题",
-      "Heading 5": "五级标题",
-      "Heading 6": "六级标题",
-      Quote: "引用",
-      Bullet: "项目符号",
-      Numbered: "编号列表",
-      Paragraph: "段落",
-      Table: "表格",
-      Tweet: "推文",
-      Image: "图片",
-      Code: "代码",
-      Divider: "分割线",
-      Content: "内容",
-      Upload: "上传",
-      "Special content": "特殊内容",
-      "Paragraph, quote, lists, inline styles, and link are preserved.": "段落、引用、列表、行内样式和链接均保留。",
-      "Image uploaded": "图片已上传",
-      "Body image is present after X upload completes.": "X 上传完成后正文图片存在。",
-      "Images appear in the article after X upload completes.": "X 上传完成后图片显示在文章里。",
-      "Cover image": "封面图片",
-      "Table image": "表格图片",
-      "Markdown table is rendered and uploaded as an image.": "Markdown 表格会渲染并作为图片上传。",
-      "Tweet embed": "推文嵌入",
-      "Tweet URL becomes an embedded tweet block.": "推文 URL 会变成嵌入推文块。",
-      "Code and divider": "代码和分隔线",
-      "Fenced code and horizontal rule become X atomic blocks.": "代码块和分隔线显示正确。",
-      "Code blocks and dividers appear correctly.": "代码块和分隔线显示正确。",
-      "Markers cleaned": "临时文本已移除",
-      "Temporary text removed": "临时文本已移除",
-      "No __XPOSTER_ text remains in the article.": "文章中没有残留 xPoster 占位文本。",
-      "No xPoster placeholder text remains in the article.": "文章中没有残留 xPoster 占位文本。",
-      "Diagnostics healthy": "编辑器检查通过",
-      "Editor check passed": "编辑器检查通过",
-      "Check passed": "检查通过",
-      "Popup still reports MAIN bridge and upload handler readiness.": "xPoster 仍能连接编辑器并上传媒体。",
-      "xPoster can still reach the editor and media upload.": "xPoster 仍能连接编辑器并上传媒体。",
-      "Page import button": "页面导入按钮",
-      "File import works": "文件导入可用",
-      "X Articles import button opens the file picker and imports a .md draft.": "X 文章导入按钮会打开文件选择器并导入 .md 草稿。",
-      "The X Articles page import button can open a Markdown file.": "X 文章页面的导入按钮可以打开 Markdown 文件。",
-      "No run captured yet.": "尚未捕获运行。",
-      Save: "保存",
-      "Copy or save the final record.": "复制或保存最终记录。",
-      "Run a publishing check or import to capture diagnostics.": "运行发布前检查或导入以保存记录。",
-      "Run a publishing check or import to save a record.": "运行检查或导入以保存记录。",
-      "Run Check X page or Import to save a record.": "运行检查文章或导入以保存记录。",
-      "Run Check article or Import to save a record.": "运行检查文章或导入以保存记录。",
-      "No check or import saved yet.": "尚未保存检查或导入记录。",
-      "No local record saved yet.": "还没有本地记录。",
-      "Open this when you need a local record.": "需要本地记录时再打开。",
-      "Write an article to save a local record.": "检查或写入文章后会保存详细记录。",
-      "Run Check or Write article to save a detailed record.": "运行检查或写入文章后会保存详细记录。",
-      "Import behavior": "导入行为",
-      "Settings": "设置",
-      "Full capability mode": "完整能力模式",
-      ["No license gates, no Free/" + "Pro limits, no footer signature."]: "没有许可证门禁、免费/专业版限制或页脚签名。",
-      "No trial limits": "没有试用限制",
-      "All import features are available.": "所有导入功能都可用。",
-      "Everything is included": "功能全部可用",
-      "No account, subscription, trial limit, or feature lock.": "不需要账号、订阅，没有试用限制或功能锁。",
-      On: "开启",
-      "Choose from an active X tab so browser permissions are attached to the page.": "请从活动 X 标签页选择，以便浏览器权限绑定到页面。",
-      "Choose the folder that contains relative image paths in your Markdown.": "选择 Markdown 相对图片路径所在的文件夹。",
-      "Title and cover": "标题和封面",
-      "Uses page UI first, then X Article GraphQL when an article id is available.": "优先使用页面 UI；有文章 ID 时再使用 X 文章接口。",
-      "xPoster sets them automatically when the X Article editor allows it.": "当 X 文章编辑器允许时，xPoster 会自动设置。",
-      "Choose what xPoster writes into X Article metadata.": "选择 xPoster 要写入 X 文章元信息的内容。",
-      "Set article title": "设置文章标题",
-      "Use frontmatter title or the first H1.": "使用 frontmatter title 或第一个一级标题。",
-      "Set article cover": "设置文章封面",
-      "Use frontmatter cover or the first image.": "使用 frontmatter cover 或第一张图片。",
-      "Success feedback": "成功反馈",
-      "Choose the small celebration shown after a successful write.": "选择写入成功后显示的小反馈。",
-      "Celebration animation": "庆祝动画",
-      "Show a brief celebration on the X page when X reports a completed write.": "当 X 返回写入完成时，在 X 页面显示一次短暂庆祝动画。",
-      "Completion sound": "完成音效",
-      "Play a short local chime after a successful write.": "写入成功后播放一声本地短提示音。",
-      "Sound style": "音效风格",
-      "Soft chime": "轻柔提示",
-      "Warm bell": "温和铃声",
-      "Light pop": "轻快弹响",
-      "Project and author": "项目与作者",
-      "Open the project page or follow updates from the author.": "打开项目页面，或关注作者更新。",
-      "Open GitHub project": "打开 GitHub 项目",
-      "GitHub project": "GitHub 项目",
-      "Follow author on X": "在 X 关注作者",
-      Auto: "自动",
-      Activity: "活动",
-      "Recent activity": "最近活动",
-      "Ready.": "就绪。",
-      "Ready": "就绪",
-      "Draft blocker": "草稿阻塞",
-      "Target blocker": "目标阻塞",
-      "Import record ready": "导入记录已准备好",
-      "Draft needs attention": "草稿需要处理",
-      "X Article needs attention": "X 文章需要处理",
-      "X Article lock needs attention": "当前文章需要确认",
-      "Current article needs attention": "当前文章需要确认",
-      "Editor check needs attention": "编辑器检查需要处理",
-      "Existing content needs attention": "已有内容需要处理",
-      "Local images needs attention": "本地图片需要处理",
-      "Import plan needs attention": "导入计划需要处理",
-      "Import gate ready": "可以开始导入",
-      "Ready for live import": "可以导入到 X",
-      "Inspect imported article": "检查导入后的文章",
-      "Completion evidence ready": "完成证据已准备好",
-      "Import ready": "可以导入",
-      Imported: "已导入",
-      "Package ready": "证据包就绪",
-      "Final records ready": "最终记录已准备好",
-      "Records ready": "记录已准备好",
-      "Review done": "检查完成",
-      "Result done": "结果完成",
-      "Paste Markdown before checking X.": "检查 X 页面前先粘贴 Markdown。",
-      "Complete the live result checklist first.": "请先完成文章结果检查清单。",
-      "Complete the article review checklist first.": "请先完成文章检查清单。",
-      "Finish the article review first.": "请先完成文章检查。",
-      "The evidence package includes the full import ledger.": "证据包会包含完整导入明细。",
-      "Load this folder as an unpacked extension in Chrome.": "请先在 Chrome 中加载这个解包扩展文件夹。",
-      "Load the xPoster folder as an unpacked extension in signed-in Chrome.": "请在已登录的 Chrome 中加载 xPoster 这个扩展文件夹。",
-      "Side panel is running inside the extension context.": "侧边栏正在扩展环境中运行。",
-      "Side panel is running from the extension context.": "侧边栏正在扩展环境中运行。",
-      "The active tab must be on x.com/compose/articles before xPoster can import.": "活动标签页必须打开 x.com/compose/articles，xPoster 才能导入。",
-      "Open or create an X Article draft in the active tab.": "在当前标签页打开或创建一篇 X 文章草稿。",
-      "Open or create the X Article you want to fill. xPoster only writes after you click Import.": "打开或创建要填入内容的 X 文章。只有点击导入后，xPoster 才会写入。",
-      "Open or create the X Article you want to fill. Keep that tab active while importing.": "打开或创建要填入内容的 X 文章。导入时保持该标签页处于活动状态。",
-      "Open Articles": "打开文章",
-      "Open an article editor": "打开文章编辑器",
-      "Create or open an X Article draft, then run Check so the Draft.js bridge and upload handler can be verified.": "创建或打开一篇 X 文章草稿，然后运行检查来确认编辑器连接和上传能力。",
-      "Create or open an X Article draft, then run Check so xPoster can confirm editor access and media upload.": "创建或打开一篇 X 文章草稿，然后运行检查，确认 xPoster 能访问编辑器并上传媒体。",
-      "Create or open an X Article draft, then run Check X page so xPoster can confirm text and image access.": "创建或打开一篇 X 文章草稿，然后点击检查文章，确认 xPoster 能写入文字并上传图片。",
-      "Create or open an X Article draft, then click Check article so xPoster can confirm text and image access.": "创建或打开一篇 X 文章草稿，然后点击检查文章，确认 xPoster 能写入文字并上传图片。",
-      "Create or open an X Article draft, then click Check article so xPoster can confirm text and image access.": "创建或打开一篇 X 文章草稿，然后点击检查文章，确认 xPoster 能写入文字并上传图片。",
-      "Allow the image website": "检查图片下载",
-      "Chrome needs one approval before xPoster can read web images from your Markdown and upload them into X.": "xPoster 会在写入时尝试处理 Markdown 里的网页图片，可下载时交给 X 上传。",
-      "Run publishing check": "运行发布前检查",
-      "Check the X editor": "检查 X 编辑器",
-      "Verify the MAIN-world bridge and X upload handler against the active article editor.": "检查当前文章编辑器的连接和上传能力。",
-      "Confirm xPoster can write into the active article editor and upload media.": "确认 xPoster 能写入当前文章编辑器并上传媒体。",
-      "Confirm xPoster can write into this article and upload media.": "确认 xPoster 能写入这篇文章并上传媒体。",
-      "Check that the open X Article can accept text and media before importing.": "导入前检查当前 X 文章 是否能接收文字和媒体。",
-      "Check that the open X Article can accept text and upload images before importing.": "导入前检查当前 X 文章是否能接收文字并上传图片。",
-      "Check that this X Article can accept text and images before importing.": "导入前检查这篇 X 文章是否能接收文字和图片。",
-      "Open the X editor and run Check so images and tables can upload.": "打开 X 编辑器并运行检查，这样图片和表格才能上传。",
-      "Check editor": "检查编辑器",
-      "Choose local image folder": "选择本地图片文件夹",
-      "Relative image paths need a readable folder selected from the active X tab.": "相对图片路径需要从当前 X 标签页选择一个可读取文件夹。",
-      "Import into X Article": "导入到 X 文章",
-      "The draft, target, bridge, uploads, assets, and import plan are ready.": "草稿、X 页面、编辑器连接、上传、本地图片和导入计划都已准备好。",
-      "The draft, X Article, editor access, media upload, local images, and import plan are ready.": "草稿、X 文章、编辑器访问、媒体上传、本地图片和导入计划都已准备好。",
-      "Everything needed for this draft is ready. Import, then review the article in X.": "这份草稿需要的准备都完成了。导入后请在 X 里检查文章。",
-      "Ready. xPoster will fill the open X Article, then you review it before publishing.": "已准备好。xPoster 会填入当前 X 文章，然后你在发布前检查。",
-      "Record live result": "记录文章结果",
-      "Review imported article": "检查导入后的文章",
-      "Export final evidence": "导出最终证据",
-      "Save final records": "保存最终记录",
-      "The live result checklist is complete. Copy the evidence package for the completion record.": "文章结果检查清单已完成。复制证据包作为完成记录。",
-      "The article review is complete. Copy or save the final records.": "文章检查已完成。复制或保存最终记录。",
-      "Import gate is clear; evidence can be exported.": "导入前检查已通过，可以导出证据。",
-      "Import checks are clear; records can be exported.": "导入检查已通过，可以导出记录。",
-      "Import gate is clear; record the live result after import.": "导入前检查已通过，导入后请记录文章结果。",
-      "Import checks are clear; review the article after import.": "导入检查已通过，导入后请检查文章。",
-      "Run Import, then inspect the live X Article result.": "运行导入，然后检查 X 文章里的实际结果。",
-      "Copy or save the final package with diagnostics, plan, import evidence, and live result checks.": "复制或保存最终证据包，里面包含诊断、导入计划、导入证据和文章结果检查。",
-      "Copy or save the final package with checks, import plan, import record, and article review.": "复制或保存最终记录包，里面包含检查、导入计划、导入记录和文章检查。",
-      "No active issues": "当前没有问题",
-
-      "The local checks are clear. Continue with a real X import before treating this run as complete.": "本地检查已通过。确认完成前，请继续完成一次真实 X 导入。",
-      "Copy or save the evidence package before treating this run as complete.": "确认本次运行完成前，请先复制或保存证据包。",
-      "Copy or save the final records before treating this run as complete.": "确认本次运行完成前，请先复制或保存最终记录。",
-      "Add a Markdown draft first.": "请先添加 Markdown 草稿。",
-      "Open or create an X Article draft.": "请打开或创建一篇 X 文章草稿。",
-      "Click Check so xPoster uses the correct X Article.": "点击检查，确认 xPoster 使用的是正确的 X 文章。",
-      "Click Check X page so xPoster confirms the open article.": "点击检查文章，确认 xPoster 会使用当前打开的文章。",
-      "Click Check article so xPoster confirms the open article.": "点击检查文章，确认 xPoster 会使用当前打开的文章。",
-      "Click Check X page so xPoster confirms this is the article to fill.": "点击检查文章，确认这就是要填入内容的文章。",
-      "Click Check article so xPoster confirms this is the article to fill.": "点击检查文章，确认这就是要填入内容的文章。",
-      "The open X Article changed after Check. Run Check X page again before importing.": "当前打开的 X 文章在检查后发生了变化。导入前请再次点击检查文章。",
-      "The open X Article changed after Check. Run Check article again before importing.": "当前打开的 X 文章在检查后发生了变化。导入前请再次点击检查文章。",
-      "Click Check X page before importing.": "导入前请点击检查文章。",
-      "Click Check article before importing.": "导入前请点击检查文章。",
-      "Click Check article so xPoster confirms the open article.": "点击检查文章，确认 xPoster 会使用当前打开的文章。",
-      "Click Check article so xPoster confirms this is the article to fill.": "点击检查文章，确认这就是要填入内容的文章。",
-      "The open X Article changed after Check. Run Check article again before importing.": "当前打开的 X 文章在检查后发生了变化。导入前请再次点击检查文章。",
-      "Click Check article before importing.": "导入前请点击检查文章。",
-      "Refresh the X Article tab so the latest xPoster page script handles images.": "请刷新 X 文章标签页，让最新版 xPoster 页面脚本处理图片。",
-      "The draft does not have anything xPoster can import yet.": "这份草稿里还没有 xPoster 可导入的内容。",
-      "Click Check after the X editor opens.": "X 编辑器打开后点击检查。",
-      "Click Check with the X editor open so images can upload.": "X 编辑器打开后点击检查，这样图片才能上传。",
-      "Choose the local image folder.": "请选择本地图片文件夹。",
-      "Allow the remote image site.": "网页图片会在写入时处理。",
-      "Approve the image website so xPoster can upload Markdown images.": "网页图片会在写入时自动尝试处理。",
-      "Click Allow image website if you want xPoster to upload web images, then approve Chrome's prompt.": "如果希望网页图片都上传，请把失败链接换成公开可访问链接。",
-      "Click Check downloads if every web image must become an uploaded X image.": "如果每张网页图片都必须上传，请把失败链接换成公开可访问链接。",
-      "Ready to import into the active X Article.": "可以导入到当前 X 文章。",
-      "Parse Markdown": "解析 Markdown",
-      "Prepare media": "准备图片和表格",
-      "Replace markers": "替换占位标记",
-      "Set title and cover": "设置标题和封面",
-      "Capture evidence": "记录证据",
-      "Editor visible.": "编辑器已显示。",
-      "Draft can be created.": "可以创建草稿。",
-      "Final result captured.": "最终结果已记录。",
-      "No active import is running.": "当前没有正在运行的导入。",
-      "Status update": "状态更新",
-      "Markdown parsed": "Markdown 已解析",
-      "Import complete": "导入完成",
-      "Import failed": "导入失败",
-      "Import running": "导入中",
-      "Received a live import event from the active X tab.": "已收到当前 X 标签页发来的导入事件。",
-      "Preparing Markdown, assets, and the X editor bridge.": "正在准备 Markdown、图片和 X 编辑器。",
-      "Writing generated HTML and marker placeholders into X.": "正在把正文写入 X。",
-      "Uploading prepared images and rendered tables through X.": "正在通过 X 上传准备好的图片和渲染后的表格。",
-      "Replacing marker paragraphs with media and atomic blocks.": "正在把图片、推文和代码放到正确位置。",
-      "Applying article metadata before the body import.": "正在先设置文章标题和封面。",
-      "The import run reported completion.": "导入流程已报告完成。",
-      "Live status received from the active X tab.": "已收到当前 X 标签页发来的实时状态。",
-      "The active X tab reported a completed import.": "当前 X 标签页报告导入已完成。",
-      "elapsed time unknown": "耗时未知",
-      "Classify the failed import": "查看失败原因",
-      "Open Evidence to inspect the import error payload.": "打开记录，查看导入错误详情。",
-      "Rerun the bridge check": "重新检查 X 页面",
-      "Confirm Draft.js, upload handler, route, article id, and vault state before retrying.": "重试前请确认当前 X 文章、图片上传和本地图片文件夹状态。",
-      "Editor bridge is not clean": "X 编辑器还不能写入",
-      "X may have changed its Draft.js or upload internals. Capture diagnostics before retrying.": "X 页面可能变化了。重试前请先保存检查记录。",
-      "Run the live import": "运行真实导入",
-      "Gate is ready. Import once, then inspect the X Article before packaging evidence.": "检查已通过。导入一次，然后检查 X 文章，再保存记录。",
-      "Inspect partial import": "检查部分导入结果",
-      "Complete result review": "完成结果检查",
-      "Package final evidence": "打包最终证据",
-      "Result review is complete. Copy or save the evidence package.": "结果检查已完成。请复制或保存证据包。",
-      "Local image folder pending": "本地图片文件夹待处理",
-      "Choose a readable local image folder before importing local paths.": "导入本地路径图片前，请选择一个可读取的本地图片文件夹。",
-      "Diagnostics evidence captured": "已捕获诊断证据",
-      "Keep this JSON with any failed live run so parser, gate, and bridge state can be compared.": "请保留这份记录，方便失败后对比草稿、检查项和 X 页面状态。",
-      "Failure captured; preserve evidence before retrying.": "已记录失败信息；重试前请保留证据。",
-      "Diagnostics found a live editor blocker.": "诊断发现当前编辑器有阻塞问题。",
-      "Import evidence exists; finish result review and package.": "已有导入证据；请完成结果检查并打包。",
-      "Gate ready; run one live import.": "导入前检查已通过；请运行一次真实导入。",
-      "No active tab": "没有活动标签页",
-      "No publishable blocks detected yet.": "尚未检测到可发布内容块。",
-      "Untitled article": "未命名文章",
-      "Horizontal divider": "水平分隔线",
-      Paste: "粘贴",
-      Upload: "上传",
-      "Cover image": "封面图片",
-      "Table image": "表格图片",
-      Image: "图片",
-      "prepared media": "已准备的媒体",
-      "code block": "代码块",
-      divider: "分隔线",
-      "HTML paste": "HTML 粘贴",
-      Metadata: "标题和封面",
-      "Media upload": "媒体上传",
-      "Atomic block": "特殊内容",
-      Fallback: "备用方案",
-      "Article title": "文章标题",
-      "Article cover": "文章封面",
-      "Heading 1": "一级标题",
-      "Heading 2": "二级标题",
-      "Heading 3": "三级标题",
-      "Heading 4": "四级标题",
-      "Heading 5": "五级标题",
-      "Heading 6": "六级标题",
-      Quote: "引用",
-      "Bullet item": "项目符号",
-      "Numbered item": "编号项目",
-      Paragraph: "段落",
-      "Empty text block": "空文本块",
-      "Absolute local paths are blocked; use a path relative to the vault.": "已阻止绝对本地路径；请使用相对于所选文件夹的路径。",
-      "Image marker": "图片位置",
-      "Markdown table": "Markdown 表格",
-      "table image": "表格图片",
-      "Tweet marker": "推文位置",
-      "Code block": "代码块",
-      "Code marker": "代码位置",
-      "Divider marker": "分隔线位置",
-      "Unknown block": "未知内容块",
-      "This block will be preserved as plain text if xPoster cannot map it.": "如果 xPoster 无法转换这个块，会按纯文本保留。",
-      "No blockers found": "未发现阻塞项",
-      "Title setting is off; headings stay in the article body.": "标题设置已关闭；标题会留在正文中。",
-      "No title detected. Add frontmatter title or a first-level heading.": "未检测到标题。请添加 frontmatter title 或一级标题。",
-      "Cover setting is off; images stay in the article body.": "封面设置已关闭；图片会留在正文中。",
-      "Cover source matches an image in the article body.": "封面来源与正文中的图片匹配。",
-      "Cover source is not also present as a body image; X cover assignment may be skipped.": "封面来源没有出现在正文图片中，X 可能跳过封面设置。",
-      "No cover candidate detected. Add frontmatter cover or a first image.": "未检测到封面候选项。请添加 frontmatter cover 或第一张图片。",
-      "No media uploads required.": "无需上传媒体。",
-      "Images or rendered tables need X upload handler.": "图片或渲染后的表格需要 X 上传能力。",
-      "Run Check to lock the active X Article target.": "运行检查，确认当前 X 文章就是要导入的文章。",
-      "Will set article title through UI and GraphQL when available.": "导入时会尽量设置文章标题。",
-      "Add frontmatter title or a first H1.": "请添加 frontmatter title 或第一个一级标题。",
-      "Will match the uploaded image and assign it as cover when article id is available.": "导入时会尽量把匹配的图片设为封面。",
-      "Cover source has no matching body image; cover assignment may be skipped.": "封面来源没有匹配的正文图片，可能会跳过封面设置。",
-      "Add frontmatter cover or a first image.": "请添加 frontmatter cover 或第一张图片。",
-      "Will paste as structured HTML before marker replacement.": "会先写入正文，再放置图片、推文和代码。",
-      "No text blocks detected.": "未检测到文本块。",
-      "Prepared images can use X upload handler.": "准备好的图片可使用 X 上传能力。",
-      "Needs X upload handler from a live article editor.": "需要打开真实文章编辑器后才能上传。",
-      "No image uploads detected.": "未检测到需要上传的图片。",
-      "Tables render to PNG and upload through X.": "表格会渲染为 PNG 并通过 X 上传。",
-      "Tables render locally but still need X upload handler.": "表格可在本地渲染，但仍需要 X 上传能力。",
-      "No tables detected.": "未检测到表格。",
-      "Tweet embeds can be inserted through Draft.js atomic blocks.": "推文链接可以作为嵌入内容放入文章。",
-      "Needs MAIN-world Draft.js bridge.": "需要 X 编辑器可写入。",
-      "No tweet URLs detected.": "未检测到推文 URL。",
-      "Fenced code can be inserted as Markdown atomic blocks.": "代码块可以放入文章。",
-      "No fenced code blocks detected.": "未检测到围栏代码块。",
-      "Horizontal rules can be inserted as divider atomic blocks.": "分隔线可以放入文章。",
-      "No dividers detected.": "未检测到分隔线。",
-      "Remote image URLs will be fetched after you allow their source site.": "写入时会尝试处理网页图片 URL。",
-      "Remote image URLs need source-site permission before upload.": "网页图片 URL 写入时会尝试处理。",
-      "Remote HTTP images": "网页图片",
-      "Remote image URL": "网页图片 URL",
-      "Allow the image site to upload this image.": "图片可下载后即可上传这张图片。",
-      "Absolute local paths are blocked; use paths relative to the selected folder.": "已阻止绝对本地路径；请使用相对于所选文件夹的路径。",
-      "Relative local images can resolve through the selected folder.": "相对路径本地图片可通过所选文件夹读取。",
-      "Choose a readable folder from the active X page.": "请从当前 X 页面选择一个可读取文件夹。",
-      "No local image paths require folder access.": "没有本地图片路径需要文件夹权限。",
-      "Article export": "文章导出",
-      "Show a quiet Markdown copy/download button on readable X Articles.": "在可读取的 X 文章页显示低调的 Markdown 复制/下载按钮。",
-      "Show Markdown export button": "显示 Markdown 导出按钮",
-      "Copy or download article pages as standard Markdown.": "将文章页面复制或下载为标准 Markdown。",
-      Done: "完成",
-      Blocked: "阻塞",
-      Running: "运行中",
-      Idle: "空闲",
-      Skipped: "跳过",
-      Partial: "部分完成",
-      Failed: "失败",
-      Waiting: "等待",
-      Hidden: "隐藏",
-      More: "更多"
-    })
-  );
-  const EN_TEXT = new Map(Array.from(ZH_TEXT.entries()).map(([en, zh]) => [zh, en]));
-  i18n?.registerMessages({
-    en: Object.fromEntries(Array.from(ZH_TEXT.keys()).map((key) => [key, key])),
-    zh: Object.fromEntries(ZH_TEXT),
-    "zh-TW": Object.fromEntries(Array.from(ZH_TEXT.entries()).map(([key, value]) => [key, shared.toTraditionalChinese(value)]))
-  });
+  const sidepanelMessages = window.xPosterSidepanelMessages?.register?.(i18n, shared, {
+    X_ARTICLE_MEDIA_LIMIT_WARNING,
+    X_ARTICLE_MEDIA_HEADROOM_NOTE,
+    X_ARTICLE_MEDIA_CAPACITY_NOTE
+  }) || { ZH_TEXT: new Map(), EN_TEXT: new Map() };
+  const { ZH_TEXT, EN_TEXT } = sidepanelMessages;
+  const sidepanelPatterns = window.xPosterSidepanelPatterns || {
+    translatePatternText: (source) => source,
+    reversePatternText: () => null
+  };
 
   const hasChromeApi = () =>
     typeof chrome !== "undefined" && Boolean(chrome.storage?.local && chrome.tabs);
@@ -1903,6 +324,14 @@
     els.themeChoice.querySelectorAll('input[name="themeMode"]').forEach((input) => {
       input.checked = input.value === currentThemeMode;
     });
+  }
+
+  function startupStorage() {
+    if (!hasChromeApi()) return Promise.resolve({});
+    if (!startupStoragePromise) {
+      startupStoragePromise = chrome.storage.local.get(STARTUP_STORAGE_KEYS).catch(() => ({}));
+    }
+    return startupStoragePromise;
   }
 
   function normalizeImportOptions(options = {}) {
@@ -1951,6 +380,75 @@
     }, String(html || ""));
   }
 
+  function isWhitespacePreviewNode(node) {
+    return node?.nodeType === Node.TEXT_NODE && !node.nodeValue.trim();
+  }
+
+  function isPreviewListItem(node) {
+    return node?.nodeType === Node.ELEMENT_NODE && node.tagName === "LI";
+  }
+
+  function isOrderedPreviewListItem(item) {
+    return /^\s*\d+[.)]\s+/.test(item?.textContent || "");
+  }
+
+  function stripOrderedPreviewListMarker(item) {
+    const walker = document.createTreeWalker(item, NodeFilter.SHOW_TEXT);
+    const textNode = walker.nextNode();
+    if (!textNode) return;
+    textNode.nodeValue = textNode.nodeValue.replace(/^(\s*)\d+[.)]\s+/, "$1");
+  }
+
+  function normalizePreviewLists(root) {
+    const containers = [root, ...root.querySelectorAll("blockquote")];
+    for (const container of containers) {
+      let node = container.firstChild;
+      while (node) {
+        if (isWhitespacePreviewNode(node)) {
+          node = node.nextSibling;
+          continue;
+        }
+        if (!isPreviewListItem(node)) {
+          node = node.nextSibling;
+          continue;
+        }
+
+        const firstItem = node;
+        const groups = [];
+        let cursor = node;
+        while (cursor) {
+          if (isWhitespacePreviewNode(cursor)) {
+            const whitespace = cursor;
+            cursor = cursor.nextSibling;
+            whitespace.remove();
+            continue;
+          }
+          if (!isPreviewListItem(cursor)) break;
+          const ordered = isOrderedPreviewListItem(cursor);
+          const currentGroup = groups[groups.length - 1];
+          if (currentGroup && currentGroup.ordered === ordered) {
+            currentGroup.items.push(cursor);
+          } else {
+            groups.push({ ordered, items: [cursor] });
+          }
+          cursor = cursor.nextSibling;
+        }
+
+        let insertBefore = firstItem;
+        for (const group of groups) {
+          const list = document.createElement(group.ordered ? "ol" : "ul");
+          container.insertBefore(list, insertBefore);
+          for (const item of group.items) {
+            if (group.ordered) stripOrderedPreviewListMarker(item);
+            list.appendChild(item);
+          }
+          insertBefore = cursor;
+        }
+        node = cursor;
+      }
+    }
+  }
+
   function safePreviewUrl(value = "") {
     const raw = String(value || "").trim();
     if (!raw) return "";
@@ -1994,25 +492,40 @@
         node.setAttribute("decoding", "async");
       }
     });
+    normalizePreviewLists(template.content);
     return template.innerHTML;
+  }
+
+  function markdownSegmentCounts(text, fallback = shared.segmentCounts([])) {
+    if (!String(text || "").trim()) return shared.segmentCounts([]);
+    try {
+      return shared.segmentCounts(parseDraftMarkdown(text).segments);
+    } catch {
+      return fallback;
+    }
+  }
+
+  function editorStatsText(text, counts = shared.segmentCounts([])) {
+    const parts = [formatCompactUnit(String(text || "").length, "char", "chars", "字符")];
+    if (counts.image) parts.push(formatCompactUnit(counts.image, "image", "images", "图"));
+    if (counts.table) parts.push(formatCompactUnit(counts.table, "table", "tables", "表"));
+    return parts.join(" · ");
+  }
+
+  function updateEditorModeToggle(button, mode) {
+    if (!button) return;
+    const isRead = mode === "read";
+    const nextMode = isRead ? "edit" : "read";
+    button.dataset.nextMode = nextMode;
+    button.setAttribute("aria-pressed", isRead ? "true" : "false");
+    button.setAttribute("aria-label", localizeText(nextMode === "read" ? "Read" : "Write"));
+    button.title = localizeText(nextMode === "read" ? "Read" : "Write");
   }
 
   function updateDraftEditorStatus({ parse = true } = {}) {
     const text = draftText();
-    let counts = shared.segmentCounts([]);
-    if (parse && text.trim()) {
-      try {
-        counts = shared.segmentCounts(parseDraftMarkdown(text).segments);
-      } catch {
-        counts = latestCounts || counts;
-      }
-    }
-    if (els.draftEditorStats) {
-      const parts = [formatCompactUnit(text.length, "char", "chars", "字符")];
-      if (counts.image) parts.push(formatCompactUnit(counts.image, "image", "images", "图"));
-      if (counts.table) parts.push(formatCompactUnit(counts.table, "table", "tables", "表"));
-      setLocalizedText(els.draftEditorStats, parts.join(" · "));
-    }
+    const counts = parse ? markdownSegmentCounts(text, latestCounts || shared.segmentCounts([])) : shared.segmentCounts([]);
+    if (els.draftEditorStats) setLocalizedText(els.draftEditorStats, editorStatsText(text, counts));
   }
 
   function updateDraftEditorDensity(text = draftText()) {
@@ -2104,12 +617,11 @@
     return highlightInlineMarkdownSyntax(value);
   }
 
-  function renderDraftSyntaxHighlight(text = draftText()) {
-    if (!els.draftSyntaxHighlight) return;
+  function renderMarkdownSyntaxHighlight(target, text = "") {
+    if (!target) return;
     const value = String(text || "");
     if (value.length > SYNTAX_HIGHLIGHT_DETAIL_LIMIT) {
-      els.draftSyntaxHighlight.textContent = value;
-      syncDraftSyntaxScroll();
+      target.textContent = value;
       return;
     }
     const lines = value.replace(/\r\n?/g, "\n").split("\n");
@@ -2122,8 +634,33 @@
         return rendered || " ";
       })
       .join("\n");
-    els.draftSyntaxHighlight.innerHTML = html;
+    target.innerHTML = html;
+  }
+
+  function cancelDeferredDraftSyntaxHighlight() {
+    if (!draftSyntaxIdleHandle) return;
+    if (typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(draftSyntaxIdleHandle);
+    else window.clearTimeout(draftSyntaxIdleHandle);
+    draftSyntaxIdleHandle = null;
+  }
+
+  function renderDraftSyntaxHighlight(text = draftText()) {
+    if (!els.draftSyntaxHighlight) return;
+    cancelDeferredDraftSyntaxHighlight();
+    renderMarkdownSyntaxHighlight(els.draftSyntaxHighlight, text);
     syncDraftSyntaxScroll();
+  }
+
+  function scheduleDraftSyntaxHighlight(text = draftText()) {
+    if (!els.draftSyntaxHighlight) return;
+    cancelDeferredDraftSyntaxHighlight();
+    const value = String(text || "");
+    els.draftSyntaxHighlight.textContent = value;
+    draftSyntaxIdleHandle = runWhenIdle(() => {
+      draftSyntaxIdleHandle = null;
+      if (draftText() !== value || draftEditorMode !== "edit" || queueModeActive()) return;
+      renderDraftSyntaxHighlight(value);
+    }, 220);
   }
 
   function syncDraftSyntaxScroll() {
@@ -2132,10 +669,12 @@
     els.draftSyntaxHighlight.scrollLeft = els.markdown.scrollLeft;
   }
 
-  function setDraftText(markdown, { preview = true, parseStatus = true } = {}) {
+  function setDraftText(markdown, { preview = true, parseStatus = true, syntax = "now" } = {}) {
     const text = String(markdown || "");
     if (els.markdown && els.markdown.value !== text) els.markdown.value = text;
-    renderDraftSyntaxHighlight(text);
+    if (syntax === "defer") scheduleDraftSyntaxHighlight(text);
+    else if (syntax === "none") cancelDeferredDraftSyntaxHighlight();
+    else renderDraftSyntaxHighlight(text);
     updateDraftEditorDensity(text);
     updateDraftEditorStatus({ parse: parseStatus });
     if (preview) updateInlinePreview();
@@ -2174,8 +713,7 @@
     scheduleDraftHistory("typed");
   }
 
-  function textareaSelection() {
-    const textarea = els.markdown;
+  function textareaSelection(textarea = els.markdown) {
     if (!textarea) return { start: 0, end: 0, selected: "" };
     const start = Math.max(0, textarea.selectionStart || 0);
     const end = Math.max(start, textarea.selectionEnd || start);
@@ -2186,40 +724,38 @@
     };
   }
 
-  function replaceTextareaSelection(text, selectStart = 0, selectEnd = text.length) {
-    const textarea = els.markdown;
+  function replaceTextareaSelection(text, selectStart = 0, selectEnd = text.length, { textarea = els.markdown, onChange = handleDraftEditorInput } = {}) {
     if (!textarea) return;
-    const { start, end } = textareaSelection();
+    const { start, end } = textareaSelection(textarea);
     textarea.setRangeText(text, start, end, "end");
     textarea.focus();
     textarea.setSelectionRange(start + selectStart, start + selectEnd);
-    handleDraftEditorInput();
+    onChange?.();
   }
 
-  function surroundTextareaSelection(before, after = before) {
-    const { selected } = textareaSelection();
-    replaceTextareaSelection(`${before}${selected}${after}`, before.length, before.length + selected.length);
+  function surroundTextareaSelection(before, after = before, options = {}) {
+    const { selected } = textareaSelection(options.textarea || els.markdown);
+    replaceTextareaSelection(`${before}${selected}${after}`, before.length, before.length + selected.length, options);
   }
 
-  function insertAtCurrentLine(prefix) {
-    const textarea = els.markdown;
+  function insertAtCurrentLine(prefix, { textarea = els.markdown, onChange = handleDraftEditorInput } = {}) {
     if (!textarea) return;
     const position = Math.max(0, textarea.selectionStart || 0);
     const lineStart = textarea.value.lastIndexOf("\n", position - 1) + 1;
     textarea.setRangeText(prefix, lineStart, lineStart, "end");
     textarea.focus();
     textarea.setSelectionRange(position + prefix.length, position + prefix.length);
-    handleDraftEditorInput();
+    onChange?.();
   }
 
-  function applyTextareaCommand(command) {
-    if (command === "bold") surroundTextareaSelection("**");
-    else if (command === "italic") surroundTextareaSelection("_");
-    else if (command === "heading") insertAtCurrentLine("## ");
-    else if (command === "code") surroundTextareaSelection("`");
-    else if (command === "link") replaceTextareaSelection("[link text](https://)", 1, 10);
-    else if (command === "image") replaceTextareaSelection("![alt text](https://)", 2, 10);
-    else if (command === "table") replaceTextareaSelection("| Column | Value |\n| --- | --- |\n|  |  |\n", 34, 34);
+  function applyTextareaCommand(command, options = {}) {
+    if (command === "bold") surroundTextareaSelection("**", "**", options);
+    else if (command === "italic") surroundTextareaSelection("_", "_", options);
+    else if (command === "heading") insertAtCurrentLine("## ", options);
+    else if (command === "code") surroundTextareaSelection("`", "`", options);
+    else if (command === "link") replaceTextareaSelection("[link text](https://)", 1, 10, options);
+    else if (command === "image") replaceTextareaSelection("![alt text](https://)", 2, 10, options);
+    else if (command === "table") replaceTextareaSelection("| Column | Value |\n| --- | --- |\n|  |  |\n", 34, 34, options);
   }
 
   function setDraftEditorMode(mode = "edit") {
@@ -2249,13 +785,7 @@
   }
 
   function updateDraftEditorModeToggle() {
-    const button = els.draftEditorModeToggle;
-    if (!button) return;
-    const nextMode = draftEditorMode === "read" ? "edit" : "read";
-    button.dataset.nextMode = nextMode;
-    button.setAttribute("aria-pressed", draftEditorMode === "read" ? "true" : "false");
-    button.setAttribute("aria-label", localizeText(nextMode === "read" ? "Read" : "Write"));
-    button.title = localizeText(nextMode === "read" ? "Read" : "Write");
+    updateEditorModeToggle(els.draftEditorModeToggle, draftEditorMode);
   }
 
   function updateInlinePreview(parsed = latestParsed, counts = latestCounts) {
@@ -2266,25 +796,33 @@
       if (els.draftInlinePreviewTitle) setLocalizedText(els.draftInlinePreviewTitle, "Reading preview");
       if (els.draftInlinePreviewMeta) setLocalizedText(els.draftInlinePreviewMeta, "Paste Markdown to read it here.");
       if (els.draftInlinePreviewBody) {
-        els.draftInlinePreviewBody.innerHTML = `<p class="empty">${shared.escapeHtml(localizeText("Reading preview appears here."))}</p>`;
+        els.draftInlinePreviewBody.innerHTML = emptyMarkdownPreviewHtml();
       }
       translateDynamicDom(els.draftInlinePreview);
       return;
     }
-    const safe = shared.escapeHtml;
-    const renderer = miniGfm();
-    const { protectedMarkdown, codeBlocks } = protectReadPreviewCodeBlocks(text);
     if (els.draftInlinePreviewTitle) setLocalizedText(els.draftInlinePreviewTitle, "Reading preview");
     if (els.draftInlinePreviewMeta) setLocalizedText(els.draftInlinePreviewMeta, [
       formatCompactUnit(text.length, "char", "chars", "字符"),
       formatCompactUnit((text.match(/^!\[/gm) || []).length, "image", "images", "图")
     ].join(" · "));
     if (els.draftInlinePreviewBody) {
-      els.draftInlinePreviewBody.innerHTML = renderer
-        ? sanitizePreviewHtml(restoreReadPreviewCodeBlocks(renderer.parse(protectedMarkdown), codeBlocks))
-        : `<pre class="draft-read-fallback">${safe(text)}</pre>`;
+      els.draftInlinePreviewBody.innerHTML = markdownPreviewHtml(text);
     }
     translateDynamicDom(els.draftInlinePreview);
+  }
+
+  function markdownPreviewHtml(markdown = "") {
+    const safe = shared.escapeHtml;
+    const renderer = miniGfm();
+    const { protectedMarkdown, codeBlocks } = protectReadPreviewCodeBlocks(markdown);
+    return renderer
+      ? sanitizePreviewHtml(restoreReadPreviewCodeBlocks(renderer.parse(protectedMarkdown), codeBlocks))
+      : `<pre class="draft-read-fallback">${safe(markdown)}</pre>`;
+  }
+
+  function emptyMarkdownPreviewHtml() {
+    return `<p class="empty">${shared.escapeHtml(localizeText("Reading preview appears here."))}</p>`;
   }
 
   function runDraftEditorCommand(command) {
@@ -2297,14 +835,22 @@
     return normalizeImportOptions(importOptions);
   }
 
+  function writeOptionsPayload({ forceNewArticle = false } = {}) {
+    return {
+      ...importOptionsPayload(),
+      forceNewArticle: Boolean(forceNewArticle)
+    };
+  }
+
   function syncImportOptionsControls() {
     if (els.importTitleOption) els.importTitleOption.checked = importOptions.setTitle !== false;
     if (els.importCoverOption) els.importCoverOption.checked = importOptions.setCover !== false;
   }
 
-  function applyImportOptions(options = importOptions) {
+  function applyImportOptions(options = importOptions, { refresh = true } = {}) {
     importOptions = normalizeImportOptions(options);
     syncImportOptionsControls();
+    if (!refresh) return;
     if (latestParsed?.segments?.length) analyzeDraft();
     else if (draftText().trim()) scheduleAnalyzeDraft(STARTUP_DRAFT_ANALYZE_DELAY_MS);
     else {
@@ -2313,8 +859,8 @@
     }
   }
 
-  async function setImportOptions(nextOptions, { persist = true } = {}) {
-    applyImportOptions(nextOptions);
+  async function setImportOptions(nextOptions, { persist = true, refresh = true } = {}) {
+    applyImportOptions(nextOptions, { refresh });
     if (persist && hasChromeApi()) {
       await chrome.storage.local.set({ [STORAGE_IMPORT_OPTIONS]: importOptionsPayload() });
     }
@@ -2322,7 +868,7 @@
 
   async function restoreImportOptions() {
     if (hasChromeApi()) {
-      const stored = await chrome.storage.local.get(STORAGE_IMPORT_OPTIONS).catch(() => ({}));
+      const stored = await startupStorage();
       applyImportOptions(stored[STORAGE_IMPORT_OPTIONS] || importOptions);
       return;
     }
@@ -2354,7 +900,7 @@
 
   async function restoreArticleExportOptions() {
     if (hasChromeApi()) {
-      const stored = await chrome.storage.local.get(STORAGE_ARTICLE_EXPORT_SETTINGS).catch(() => ({}));
+      const stored = await startupStorage();
       applyArticleExportOptions(stored[STORAGE_ARTICLE_EXPORT_SETTINGS] || articleExportOptions);
       return;
     }
@@ -2395,7 +941,7 @@
 
   async function restoreSuccessFeedbackOptions() {
     if (hasChromeApi()) {
-      const stored = await chrome.storage.local.get(STORAGE_SUCCESS_FEEDBACK).catch(() => ({}));
+      const stored = await startupStorage();
       applySuccessFeedbackOptions(stored[STORAGE_SUCCESS_FEEDBACK] || successFeedbackOptions);
       return;
     }
@@ -2508,7 +1054,7 @@
   async function restoreTheme() {
     let storedTheme = null;
     if (hasChromeApi()) {
-      const stored = await chrome.storage.local.get(STORAGE_THEME);
+      const stored = await startupStorage();
       storedTheme = stored[STORAGE_THEME] || null;
     }
     await setTheme(storedTheme || currentThemeMode, { persist: false });
@@ -2576,332 +1122,11 @@
   }
 
   function translatePatternText(source) {
-    const patterns = [
-      [/^(\d+)\/(\d+) ready$/, "$1/$2 就绪"],
-      [/^(\d+)\/(\d+) record items ready\.$/, "$1/$2 条记录项就绪。"],
-      [/^(\d+) draft(?:s)?, (\d+) written$/, "$1 篇待处理，$2 篇已写入"],
-      [/^(\d+)\/(\d+) checks ready$/, "$1/$2 项检查就绪"],
-      [/^(\d+)\/(\d+) live verification steps ready\.$/, "$1/$2 个导入后检查步骤就绪。"],
-      [/^(\d+)\/(\d+) after-import steps ready\.$/, "$1/$2 个导入后步骤就绪。"],
-
-      [/^(\d+)\/(\d+) proof items ready\.$/, "$1/$2 个完成记录项就绪。"],
-      [/^(\d+)\/(\d+) live result checks recorded(?:, including the page import button path)?\.$/, "已记录 $1/$2 项文章检查。"],
-      [/^(\d+)\/(\d+) article review checks recorded(?:, including the page import button path)?\.$/, "已记录 $1/$2 项文章检查。"],
-      [/^(\d+)\/(\d+) final article checks are recorded\.$/, "已记录 $1/$2 项文章检查。"],
-      [/^(\d+)\/(\d+) final result checks recorded\.$/, "已记录 $1/$2 项文章检查。"],
-      [/^(\d+) blocker\(s\), (\d+) warning\(s\)$/, "$1 个阻塞项，$2 个警告"],
-      [/^(\d+) warning\(s\), no blockers$/, "$1 个警告，无阻塞项"],
-      [/^(\d+) thing\(s\) to fix, (\d+) warning\(s\)$/, "$1 个待修复项，$2 个警告"],
-      [/^(\d+) thing\(s\) to fix, (\d+)\/(\d+) ready$/, "$1 个待修复项，$2/$3 已就绪"],
-      [/^(\d+) item\(s\) waiting, (\d+)\/(\d+) ready$/, "$1 个待处理项，$2/$3 已就绪"],
-      [/^No active blockers; continue with live verification\.$/, "当前没有阻塞项；继续完成导入后检查。"],
-      [/^(\d+) blocked stage\(s\), (\d+) complete$/, "$1 个阶段阻塞，$2 个完成"],
-      [/^(\d+) stage\(s\) ready, (\d+) complete$/, "$1 个阶段就绪，$2 个完成"],
-      [/^(\d+)\/(\d+) stage\(s\) complete$/, "$1/$2 个阶段完成"],
-      [/^(\d+)\/(\d+)$/, "$1/$2"],
-      [/^(.+) blocks (\d+)$/, "$1 $2"],
-      [/^Text blocks (\d+)$/, "文本块 $1"],
-      [/^Special blocks (\d+)$/, "特殊块 $1"],
-      [/^Images (\d+)$/, "图片 $1"],
-      [/^Local images (\d+)$/, "本地图片 $1"],
-      [/^(\d+) blocker\(s\), (\d+)\/(\d+) proven$/, "$1 个阻塞项，$2/$3 已证明"],
-      [/^(\d+) pending item\(s\), (\d+)\/(\d+) proven$/, "$1 个待处理项，$2/$3 已证明"],
-      [/^(\d+) of (\d+) record\(s\) match this search\.$/, "$2 条记录中有 $1 条匹配。"],
-      [/^(\d+) local record\(s\), newest first\.$/, "$1 条记录，最新在前。"],
-      [/^(\d+) record\(s\), newest first\.$/, "$1 条记录，最新在前。"],
-      [/^(\d+) live event\(s\); import complete\.$/, "$1 个实时事件；导入完成。"],
-      [/^(\d+) live event\(s\); import failed\.$/, "$1 个实时事件；导入失败。"],
-      [/^(\d+) live event\(s\); import in progress\.$/, "$1 个实时事件；导入中。"],
-      [/^(\d+) update\(s\); writing complete\.$/, "$1 个更新；写入完成。"],
-      [/^(\d+) update\(s\); writing failed\.$/, "$1 个更新；写入失败。"],
-      [/^(\d+) update\(s\); writing in progress\.$/, "$1 个更新；正在写入。"],
-      [/^(\d+) live event\(s\) recorded\.$/, "已记录 $1 个实时事件。"],
-      [/^(\d+) blocks, titled$/, "$1 个块，已检测标题"],
-      [/^(\d+) blocks$/, "$1 个块"],
-      [/^(\d+) blocks loaded; title detected\.$/, "已加载 $1 个块；已检测标题。"],
-      [/^(\d+) blocks loaded; title missing\.$/, "已加载 $1 个块；未检测标题。"],
-      [/^(\d+) block\(s\), (\d+) character\(s\), ready to write\.$/, "$1 个块，$2 个字符，可以写入。"],
-      [/^Title found · (\d+) images? · (\d+) code blocks?$/, "标题已检测 · $1 张图片 · $2 个代码块"],
-      [/^No title · (\d+) images? · (\d+) code blocks?$/, "未检测标题 · $1 张图片 · $2 个代码块"],
-      [/^Loaded (\d+) characters\. Review it, then click Write to X draft\.$/, "已载入 $1 个字符。检查后点击写入到 X 草稿。"],
-      [/^(\d+) characters\. Review it, then click Write to X draft\.$/, "$1 个字符。检查后点击写入到 X 草稿。"],
-      [/^(\d+(?:,\d+)*) chars · (\d+) images? · (\d+) code blocks?$/, "$1 字 · 图片 $2 · 代码块 $3"],
-      [/^(\d+) characters, ready to write\.$/, "$1 字符，可以写入。"],
-      [/^(\d+(?:,\d+)*) chars$/, "$1 字"],
-      [/^(\d+(?:,\d+)*) chars · (\d+(?:,\d+)*) text blocks? · (\d+(?:,\d+)*) images?$/, "$1 字 · $2 段 · $3 图"],
-      [/^Queued (\d+) Markdown draft(?:s)?\.$/, "已加入 $1 篇 Markdown 草稿。"],
-      [/^(\d+) queued draft(?:s)?$/, "$1 篇草稿在队列中"],
-      [/^(\d+) queued draft(?:s)? ready\.$/, "$1 篇队列草稿已就绪。"],
-      [/^(\d+) draft\(s\) queued\.$/, "$1 篇草稿在队列中。"],
-      [/^(\d+) publishable block\(s\), title detected$/, "$1 个可发布块，已检测标题"],
-      [/^(\d+) publishable block\(s\), no title detected$/, "$1 个可发布块，未检测标题"],
-      [/^(\d+) publishable block\(s\) loaded\.$/, "已加载 $1 个可发布块。"],
-      [/^(\d+) upload items need X handler\.$/, "$1 个上传项需要 X 处理器。"],
-      [/^(\d+) upload item need X handler\.$/, "$1 个上传项需要 X 处理器。"],
-      [/^(\d+) upload items ready\.$/, "$1 个上传项就绪。"],
-      [/^(\d+) upload item ready\.$/, "$1 个上传项就绪。"],
-      [/^(\d+) image\(s\) uploaded, (\d+) kept as links$/, "$1 张图片已上传，$2 张保留为链接"],
-      [/^(\d+) image\(s\) ready, (\d+) need attention$/, "$1 张图片已就绪，$2 张保留为链接"],
-      [/^(\d+) image\(s\) uploaded$/, "$1 张图片已上传"],
-      [/^(\d+) web image\(s\) will be tried during Write\.$/, "$1 张网页图片会在写入时尝试处理。"],
-      [/^(\d+) web image\(s\) will be downloaded in the background; failed downloads stay as Markdown links\.$/, "$1 张网页图片会在写入时尝试下载；失败图片会保留为 Markdown 链接。"],
-      [/^(\d+) web image\(s\) will be tried while writing to X draft\.$/, "$1 张网页图片会在写入时尝试上传。"],
-      [/^(\d+) web image\(s\) may stay as links unless replaced\.$/, "$1 张网页图片可能保留为链接，除非替换为可下载图片。"],
-      [/^(\d+) web image\(s\) may stay as links unless the URLs are replaced\.$/, "$1 张网页图片可能保留为链接，除非替换为可访问 URL。"],
-      [/^(\d+) web image\(s\) will upload through X when reachable\.$/, "$1 张网页图片可访问时会通过 X 上传。"],
-      [/^(\d+) web image\(s\) will upload through X when reachable while writing to X draft\.$/, "$1 张网页图片可访问时会通过 X 上传。"],
-      [/^Images: (\d+)$/, "图片：$1"],
-      [/^Web images: (\d+)$/, "网页图片：$1"],
-      [/^Web images: (\d+) ready$/, "网页图片：$1 已就绪"],
-      [/^Web images: (\d+) may stay as links$/, "网页图片：$1 张可能保留为链接"],
-      [/^(\d+) web image\(s\) will be handled during Write\. Unreachable images stay as links\.$/, "$1 张网页图片会在写入时尝试上传；无法访问时会保留为链接。"],
-      [/^(\d+) web image\(s\) will be tried while writing to X draft\. Unreachable images stay as links\.$/, "$1 张网页图片会在写入时尝试上传；无法访问时会保留为链接。"],
-      [/^(\d+) image\(s\) will upload through X when possible\.$/, "$1 张图片会尽量通过 X 上传。"],
-      [/^(\d+) image\(s\) will upload through X when possible while writing to X draft\.$/, "$1 张图片会在写入 X 草稿时尽量通过 X 上传。"],
-      [/^(\d+) upload items need the X editor\.$/, "$1 个上传项需要 X 编辑器。"],
-      [/^(\d+) upload item need the X editor\.$/, "$1 个上传项需要 X 编辑器。"],
-      [/^(\d+) media upload item\(s\) can use X upload handler\.$/, "$1 个媒体上传项可使用 X 上传能力。"],
-      [/^(\d+) media upload item\(s\) can upload through X\.$/, "$1 个媒体上传项可通过 X 上传。"],
-      [/^(\d+) media item\(s\) will be uploaded through X \((\d+) image, (\d+) rendered table\)\.$/, "$1 个媒体项会通过 X 上传（$2 张图片，$3 个表格图片）。"],
-      [/^(\d+) special content block\(s\) will be placed in X\.$/, "$1 个特殊内容块会放入 X。"],
-      [/^(\d+) local image\(s\) can resolve through (.+)\.$/, "$1 张本地图片可通过 $2 读取。"],
-      [/^(\d+) local image\(s\) need a readable folder\.$/, "$1 张本地图片需要选择可读取文件夹。"],
-      [/^(\d+) local image\(s\) need a readable folder\. Choose the folder that contains their relative paths\.$/, "$1 张本地图片需要可读取文件夹。请选择包含这些相对路径的文件夹。"],
-      [/^(\d+) local image path\(s\) require a readable folder\.$/, "$1 个本地图片路径需要可读取文件夹。"],
-      [/^(\d+) absolute local image path\(s\) found\. Use paths relative to the selected folder\.$/, "发现 $1 个绝对本地图片路径。请改用相对于所选文件夹的路径。"],
-      [/^(\d+) remote image\(s\) need source-site permission before upload\.$/, "$1 张网页图片会在写入时尝试处理。"],
-      [/^(\d+) remote image\(s\) need Chrome site access before upload\.$/, "$1 张网页图片会在写入时尝试处理。"],
-      [/^(\d+) remote image\(s\) from (\d+) site\(s\) need permission before upload\.$/, "$1 张网页图片来自 $2 个站点，写入时会尝试处理。"],
-      [/^(\d+) remote image\(s\) from (\d+) site\(s\) need Chrome site access before upload\.$/, "$1 张网页图片来自 $2 个站点，写入时会尝试处理。"],
-      [/^(\d+) remote image\(s\) from (\d+) site\(s\) need Chrome site access before upload\. This is a browser permission step, not an X upload failure\.$/, "$1 张网页图片来自 $2 个站点，写入时会尝试处理。"],
-      [/^(\d+) web image\(s\) from (\d+) image website\(s\) need your approval before upload\. This is a Chrome permission step, not an X upload failure\.$/, "$1 张网页图片来自 $2 个图片网站，写入时会尝试处理。"],
-      [/^(\d+) web image\(s\) need one Chrome approval before upload\.$/, "$1 张网页图片会在写入时尝试处理。"],
-      [/^(\d+) web image\(s\) need one Chrome permission before xPoster can upload them\.$/, "$1 张网页图片会在写入时尝试处理，成功后交给 X 上传。"],
-      [/^(\d+) remote image\(s\) from (\d+) site\(s\) can be fetched\.$/, "$1 张网页图片来自 $2 个站点，已可抓取。"],
-      [/^(\d+) web image\(s\) from (\d+) image website\(s\) are allowed\.$/, "$1 张网页图片来自 $2 个图片网站，已允许。"],
-      [/^(\d+) web image\(s\) checked: (\d+) ready, (\d+) failed\.$/, "已检查 $1 张网页图片：$2 张可用，$3 张失败。"],
-      [/^Image (\d+) ready: (.+) \((.+)\)\.$/, "图片 $1 可用：$2（$3）。"],
-      [/^Image (\d+) failed \((.+)\) from (.+): (.+)\. xPoster recognized the Markdown image, but it will not write image links into X as real uploads until this file can be downloaded\.$/, "图片 $1 失败（$2），来源 $3：$4。xPoster 已识别这张 Markdown 图片，但在下载到图片文件之前，不会把图片链接写进 X 当作真实上传图片。"],
-      [/^Image (\d+) failed \((.+)\) from (.+): (.+)$/, "图片 $1 失败（$2），来源 $3：$4"],
-      [/^Image (\d+) failed: (.+)\.$/, "图片 $1 失败：$2。"],
-      [/^Image (\d+) not checked yet\.$/, "图片 $1 尚未检查。"],
-      [/^Image (\d+) will be tried during Write\.$/, "写入时会尝试处理图片 $1。"],
-      [/^Download failed: (.+)\.$/, "下载失败：$1。"],
-      [/^Remote image check failed before import: (.+)\.$/, "网页图片处理失败：$1。"],
-      [/^Remote image check passed for (\d+) image\(s\)\.$/, "$1 张网页图片可处理。"],
-      [/^Chrome is asking for image access: (.+)$/, "正在处理图片：$1"],
-      [/^Remote image check requires image website approval first\.$/, "网页图片会在写入时尝试处理。"],
-      [/^Allow this image website now\? (.+) web image\(s\) from (.+) stayed as Markdown links\.$/, "$1 张网页图片来自 $2，当前保留为 Markdown 链接。"],
-      [/^Allow this image website now\? (.+) web image from (.+) stayed as a Markdown link\.$/, "$1 张网页图片来自 $2，当前保留为 Markdown 链接。"],
-      [/^(.+) web image\(s\) are ready\. Write again to upload them into X\.$/, "$1 张网页图片已就绪。再次写入即可上传到 X。"],
-      [/^(.+) web image is ready\. Write again to upload it into X\.$/, "$1 张网页图片已就绪。再次写入即可上传到 X。"],
-      [/^(.+) web image\(s\) are allowed, but (.+) could not be downloaded\.$/, "$1 张网页图片已检查，但 $2 张无法下载。"],
-      [/^(.+) web image\(s\) stayed as Markdown links\.$/, "$1 张网页图片保留为 Markdown 链接。"],
-      [/^Article written in (.+)\.$/, "文章已写入，用时 $1。"],
-      [/^Article written in (.+)\. (.+) web image\(s\) stayed as Markdown links\. Open xPoster, allow the image website, then write again to upload them\.$/, "文章已写入，用时 $1。$2 张网页图片保留为 Markdown 链接。替换为公开可下载链接后再次写入即可上传。"],
-      [/^Article written in (.+)\. (.+) web image\(s\) stayed as Markdown links\. Allow the image website in xPoster, then write again to upload them\.$/, "文章已写入，用时 $1。$2 张网页图片保留为 Markdown 链接。替换为公开可下载链接后再次写入即可上传。"],
-      [/^Article written in (.+)\. (.+) table\(s\) stayed as Markdown\.$/, "文章已写入，用时 $1。$2 个表格保留为 Markdown。"],
-      [/^Article written in (.+)\. (.+) web image\(s\) stayed as Markdown links; (.+) table\(s\) stayed as Markdown\. Allow the image website in xPoster, then write again to upload them\.$/, "文章已写入，用时 $1。$2 张网页图片保留为 Markdown 链接；$3 个表格保留为 Markdown。替换为公开可下载图片链接后再次写入即可上传。"],
-      [/^Article written(?: in (.+))?\. (.+) body image\(s\) stayed as Markdown links; (.+) table image\(s\) stayed as Markdown tables; (.+) cover image\(s\) could not be applied\.(?: Replace unreachable image URLs with public links, then write again if those images must upload\.)?$/, (_, elapsed, images, tables, covers) => elapsed ? `文章已写入，用时 ${elapsed}。${images} 张正文图片保留为 Markdown 链接；${tables} 个表格保留为 Markdown；${covers} 张封面图片未能设置。` : `文章已写入。${images} 张正文图片保留为 Markdown 链接；${tables} 个表格保留为 Markdown；${covers} 张封面图片未能设置。`],
-      [/^Article written(?: in (.+))?\. (.+) body image\(s\) stayed as Markdown links; (.+) table image\(s\) stayed as Markdown tables\.(?: Replace unreachable image URLs with public links, then write again if those images must upload\.)?$/, (_, elapsed, images, tables) => elapsed ? `文章已写入，用时 ${elapsed}。${images} 张正文图片保留为 Markdown 链接；${tables} 个表格保留为 Markdown。` : `文章已写入。${images} 张正文图片保留为 Markdown 链接；${tables} 个表格保留为 Markdown。`],
-      [/^Article written(?: in (.+))?\. (.+) body image\(s\) stayed as Markdown links; (.+) cover image\(s\) could not be applied\.(?: Replace unreachable image URLs with public links, then write again if those images must upload\.)?$/, (_, elapsed, images, covers) => elapsed ? `文章已写入，用时 ${elapsed}。${images} 张正文图片保留为 Markdown 链接；${covers} 张封面图片未能设置。` : `文章已写入。${images} 张正文图片保留为 Markdown 链接；${covers} 张封面图片未能设置。`],
-      [/^Article written(?: in (.+))?\. (.+) body image\(s\) stayed as Markdown links\.(?: Replace unreachable image URLs with public links, then write again if those images must upload\.)?$/, (_, elapsed, images) => elapsed ? `文章已写入，用时 ${elapsed}。${images} 张正文图片保留为 Markdown 链接。` : `文章已写入。${images} 张正文图片保留为 Markdown 链接。`],
-      [/^Article written(?: in (.+))?\. (.+) table image\(s\) stayed as Markdown tables; (.+) cover image\(s\) could not be applied\.$/, (_, elapsed, tables, covers) => elapsed ? `文章已写入，用时 ${elapsed}。${tables} 个表格保留为 Markdown；${covers} 张封面图片未能设置。` : `文章已写入。${tables} 个表格保留为 Markdown；${covers} 张封面图片未能设置。`],
-      [/^Article written(?: in (.+))?\. (.+) table image\(s\) stayed as Markdown tables\.$/, (_, elapsed, tables) => elapsed ? `文章已写入，用时 ${elapsed}。${tables} 个表格保留为 Markdown。` : `文章已写入。${tables} 个表格保留为 Markdown。`],
-      [/^Article written(?: in (.+))?\. (.+) cover image\(s\) could not be applied\.$/, (_, elapsed, covers) => elapsed ? `文章已写入，用时 ${elapsed}。${covers} 张封面图片未能设置。` : `文章已写入。${covers} 张封面图片未能设置。`],
-      [/^Uploaded (\d+), kept (\d+) as links$/, "已上传 $1，$2 个保留为链接"],
-      [/^Uploaded (\d+)$/, "已上传 $1"],
-      [/^(\d+) uploaded, (\d+) kept$/, "已上传 $1，$2 个保留"],
-      [/^(\d+) web image\. Allow this image website once, then check downloads\.$/, "$1 张网页图片。写入时会自动尝试处理。"],
-      [/^(\d+) web image\(s\)\. Allow this image website once, then check downloads\.$/, "$1 张网页图片。写入时会自动尝试处理。"],
-      [/^(\d+) images?\. xPoster asks only for this image website\.$/, "$1 张图片。xPoster 只会检查这个图片来源。"],
-      [/^(.+) - (\d+) images?\. xPoster asks only for this image website\.$/, "$1 - $2 张图片。xPoster 只会检查这个图片来源。"],
-      [/^(\d+) image\(s\)\. xPoster asks only for this image website\.$/, "$1 张图片。xPoster 只会检查这个图片来源。"],
-      [/^(.+): Needs approval$/, "$1：写入时处理"],
-      [/^(.+): Allowed$/, "$1：可下载"],
-      [/^Click Allow image website, choose Allow in Chrome, then check downloads before Import\.$/, "写入时会自动尝试处理网页图片。"],
-      [/^Click Allow image website, choose Allow in Chrome, then click Check downloads before Import\.$/, "写入时会自动尝试处理网页图片。"],
-      [/^Click Allow image website\. When Chrome asks for (.+), choose Allow\. Then click Check downloads before Import\.$/, "写入时会自动尝试处理 $1 的图片。"],
-      [/^Reload xPoster in chrome:\/\/extensions, reopen the X Article tab and side panel, then try again\.$/, "在 chrome://extensions 重新加载 xPoster，重新打开 X 文章标签页和侧边栏，然后再试。"],
-      [/^(\d+) remote image\(s\) from (.+) need permission\.$/, "$1 张网页图片来自 $2，写入时会尝试处理。"],
-      [/^(\d+) remote image\(s\) from (.+) allowed\.$/, "$1 张网页图片来自 $2，可尝试下载。"],
-      [/^(\d+) image\(s\) from this site\.$/, "该站点 $1 张图片。"],
-      [/^(\d+) image\(s\) from this website\. xPoster only requests this image source\.$/, "这个网站有 $1 张图片。xPoster 只请求这个图片来源。"],
-      [/^(\d+) image\(s\) from this website\. xPoster asks only for this image site\.$/, "这个网站有 $1 张图片。xPoster 只检查这个图片来源。"],
-      [/^(.+) - (\d+) image\. xPoster fetches without site cookies and then lets X upload the file\.$/, "$1 - $2 张图片。xPoster 不带站点 cookie 下载，然后交给 X 上传。"],
-      [/^(.+) - (\d+) images\. xPoster fetches without site cookies and then lets X upload the file\.$/, "$1 - $2 张图片。xPoster 不带站点 cookie 下载，然后交给 X 上传。"],
-      [/^(\d+) web image\(s\) detected\. xPoster will try to download public images while writing; failed downloads stay as Markdown links\.$/, "检测到 $1 张网页图片。写入时会尝试下载公开图片；失败图片会保留为 Markdown 链接。"],
-      [/^(\d+) web image\(s\) checked: (\d+) ready, (\d+) will stay as Markdown links unless the URLs are replaced\.$/, "已检查 $1 张网页图片：$2 张可用，$3 张会保留为 Markdown 链接，除非替换 URL。"],
-      [/^(\d+) web image is downloadable\. Write article to upload it into X\.$/, "$1 张网页图片可下载。写入文章时会上传到 X。"],
-      [/^(\d+) web image\(s\) are downloadable\. Write article to upload them into X\.$/, "$1 张网页图片可下载。写入文章时会上传到 X。"],
-      [/^(\d+) more image\(s\)$/, "还有 $1 张图片"],
-      [/^(.+) - Needs Chrome approval$/, "$1 - 写入时处理"],
-      [/^(.+) - Allowed$/, "$1 - 可下载"],
-      [/^(\d+) remote image\(s\) across (\d+) image site\(s\)\.$/, "$1 张网页图片，来自 $2 个图片站点。"],
-      [/^Allow (.+) before importing this image\.$/, "如果这张图片必须上传，请确认 $1 可公开访问。"],
-      [/^Chrome has not granted image-site access for (.+)\. Click Allow image site in xPoster, approve Chrome's prompt, then retry Import\. If this site already looks allowed, reload xPoster and reopen the side panel\.$/, "$1 的图片无法下载。请替换为公开可访问链接后重试。"],
-      [/^Chrome has not granted image-site access for (.+)\. Click Allow image site in xPoster, choose Allow in Chrome's prompt, then retry Import\. xPoster cannot convert remote Markdown image URLs into uploaded files until this site access is granted\.$/, "$1 的图片无法下载。xPoster 会保留 Markdown 图片链接；替换为公开可访问链接后可再次写入。"],
-      [/^Chrome has not granted image-site access for (.+)\. Click Allow image site in xPoster, choose Allow in Chrome's prompt, then retry Import\. Until this permission is allowed, xPoster cannot fetch the remote image files, so Markdown image links cannot become uploaded images in X\.$/, "$1 的图片无法下载。下载成功前，Markdown 图片链接会保留为链接。"],
-      [/^Chrome has not allowed xPoster to read images from (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then retry Import\. Until this is allowed, xPoster cannot fetch the remote image files, so Markdown image links cannot become uploaded images in X\.$/, "$1 的图片无法下载。下载成功前，Markdown 图片链接会保留为链接。"],
-      [/^Chrome did not grant image website access for (.+)\. Click Import again or click Allow image website, then choose Allow in Chrome's prompt\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\.$/, "$1 的图片无法下载。再次写入会继续尝试，失败时 Markdown 图片链接会保留为链接。"],
-      [/^Chrome did not grant image website access for (.+)\. Click Allow image website, choose Allow in Chrome's prompt, then retry Import\. If Chrome already shows this website as allowed, reload the xPoster extension and reopen the side panel\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\.$/, "$1 的图片无法下载。请替换为公开可访问链接后重试；失败时 Markdown 图片链接会保留为链接。"],
-      [/^Chrome has not allowed xPoster v(.+) to read images from (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\. If Chrome does not show a prompt, reload xPoster from chrome:\/\/extensions and reopen the side panel so the service worker uses the latest permission state\.$/, "xPoster v$1 无法下载 $2 的图片。请替换为公开可访问链接；失败时 Markdown 图片链接会保留为链接。"],
-      [/^Chrome has not allowed xPoster v(.+) to read images from (.+)\. Chrome reported: (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\. If Chrome does not show a prompt, reload xPoster from chrome:\/\/extensions and reopen the side panel so the service worker uses the latest permission state\.$/, "xPoster v$1 无法下载 $2 的图片。Chrome 返回：$3。请替换为公开可访问链接；失败时 Markdown 图片链接会保留为链接。"],
-      [/^Chrome has not allowed xPoster v(.+) to read images from (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\. If Chrome already shows this website as allowed, reload xPoster from chrome:\/\/extensions and reopen the side panel so the service worker uses the latest permission state\.$/, "xPoster v$1 无法下载 $2 的图片。请替换为公开可访问链接；失败时 Markdown 图片链接会保留为链接。"],
-      [/^Chrome has not allowed xPoster v(.+) to read images from (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\. If Chrome did not show a prompt, open chrome:\/\/extensions, reload xPoster, reopen the X Article tab and the side panel, then click Allow image website again\.$/, "xPoster v$1 无法下载 $2 的图片。请替换为公开可访问链接；失败时 Markdown 图片链接会保留为链接。"],
-      [/^Chrome has not allowed xPoster v(.+) to read images from (.+)\. Chrome reported: (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\. If Chrome did not show a prompt, open chrome:\/\/extensions, reload xPoster, reopen the X Article tab and the side panel, then click Allow image website again\.$/, "xPoster v$1 无法下载 $2 的图片。Chrome 返回：$3。请替换为公开可访问链接；失败时 Markdown 图片链接会保留为链接。"],
-      [/^Chrome has not granted image-site access for (.+)\. Click Allow image website in the xPoster side panel, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a Chrome permission step, not an X upload failure; until it is allowed, Markdown image links cannot become uploaded images in X\.$/, "$1 的图片无法下载。请替换为公开可访问链接；失败时 Markdown 图片链接会保留为链接。"],
-      [/^Chrome has not granted image-site access for (.+)\. Open the xPoster side panel, click Allow image website, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure; until it is allowed, Markdown image links cannot become uploaded images in X\.$/, "$1 的图片无法下载。请替换为公开可访问链接；失败时 Markdown 图片链接会保留为链接。"],
-      [/^Chrome has not allowed xPoster v(.+) to read images from (.+)\. Chrome reported: (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\. If Chrome did not show a prompt, open chrome:\/\/extensions, reload xPoster, reopen the X Article tab and the side panel, then click Allow image website again\.$/, "xPoster v$1 无法下载 $2 的图片。Chrome 返回：$3。请替换为公开可访问链接；失败时 Markdown 图片链接会保留为链接。"],
-      [/^Chrome has not allowed xPoster v(.+) to read images from (.+)\. Click Allow image website in xPoster, choose Allow in Chrome's prompt, then click Check downloads and Import again\. This is a browser permission step, not an X upload failure\. Until Chrome allows this website, xPoster cannot fetch the image files, so Markdown image links will stay as text instead of becoming uploaded images in X\. If Chrome did not show a prompt, open chrome:\/\/extensions, reload xPoster, reopen the X Article tab and the side panel, then click Allow image website again\.$/, "xPoster v$1 无法下载 $2 的图片。请替换为公开可访问链接；失败时 Markdown 图片链接会保留为链接。"],
-      [/^xPoster v(.+) can only request remote image access for image websites declared in manifest\.json\. This draft uses (.+), which is not declared in this build\. Add that image host to optional_host_permissions, reload xPoster, then retry Import\.$/, "xPoster v$1 无法下载 $2 的图片。请替换为公开可访问链接后重试。"],
-      [/^Chrome has not granted image-site access for (.+)\. Open the xPoster side panel, click Allow image website, choose Allow in Chrome's prompt, then retry Import\. If Chrome already shows this website as allowed, reload the xPoster extension and reopen the side panel\.$/, "$1 的图片无法下载。请替换为公开可访问链接后重试。"],
-      [/^(\d+) special block\(s\), (\d+) image\(s\), (\d+) table image\(s\), (\d+) tweet embed\(s\)\.$/, "$1 个特殊块，$2 张图片，$3 张表格图片，$4 个推文嵌入。"],
-      [/^(\d+) more ledger item\(s\)$/, "还有 $1 个导入项"],
-      [/^(\d+) more import item\(s\)$/, "还有 $1 个导入项"],
-      [/^(\d+) additional marker operation\(s\) hidden\.$/, "另有 $1 个特殊内容步骤已隐藏。"],
-      [/^(\d+) additional special-content step\(s\) hidden\.$/, "另有 $1 个特殊内容步骤已隐藏。"],
-      [/^(\d+) ledger item\(s\) mapped; (\d+) waiting, (\d+) direct HTML paste\.$/, "已规划 $1 个导入项；$2 个等待处理，$3 个会直接写入正文。"],
-      [/^(\d+) import item\(s\) planned; (\d+) waiting, (\d+) direct text write\.$/, "已规划 $1 个导入项；$2 个等待处理，$3 个会直接写入正文。"],
-      [/^(\d+) item\(s\) planned; (\d+) waiting; (\d+) text item\(s\) ready\.$/, "已规划 $1 个导入项；$2 个等待处理；$3 个文本项就绪。"],
-      [/^(\d+) item\(s\) need attention; (\d+) waiting; (\d+) text item\(s\) ready\.$/, "$1 个导入项需要处理；$2 个等待处理；$3 个文本项就绪。"],
-      [/^(\d+) blocked ledger item\(s\), (\d+) waiting, (\d+) direct HTML paste\.$/, "$1 个导入项受阻，$2 个等待处理，$3 个会直接写入正文。"],
-      [/^(\d+) blocked import item\(s\), (\d+) waiting, (\d+) direct text write\.$/, "$1 个导入项受阻，$2 个等待处理，$3 个会直接写入正文。"],
-      [/^(\d+) text blocks$/, "$1 个文本块"],
-      [/^(\d+) images$/, "$1 张图片"],
-      [/^(\d+) tables$/, "$1 个表格"],
-      [/^(\d+) tweets$/, "$1 个推文"],
-      [/^(\d+) code blocks$/, "$1 个代码块"],
-      [/^(\d+) columns, (\d+) rows$/, "$1 列，$2 行"],
-      [/^Tweet (\d+)$/, "推文 $1"],
-      [/^(.+) · (\d+) lines$/, "$1，$2 行"],
-      [/^(\d+) more block\(s\) hidden in preview\.$/, "预览中隐藏了另外 $1 个块。"],
-      [/^(\d+) text part\(s\)$/, "$1 个文本部分"],
-      [/^(\d+) image\(s\)$/, "$1 张图片"],
-      [/^(\d+) table\(s\)$/, "$1 个表格"],
-      [/^(\d+) special block\(s\)$/, "$1 个特殊内容"],
-      [/^Recognized: (.+)$/, "已识别：$1"],
-      [/^Title detected: (.+)$/, "已检测标题：$1"],
-      [/^(\d+) web image\(s\)$/, "$1 张网页图片"],
-      [/^(\d+) text part\(s\) · (\d+) image\(s\) · (\d+) table\(s\) · (\d+) special block\(s\) · image links convert during Import$/, "$1 个文本部分 · $2 张图片 · $3 个表格 · $4 个特殊内容 · 图片链接会在导入时转换"],
-      [/^Text blocks (\d+)$/, "文本块 $1"],
-      [/^Special blocks (\d+)$/, "特殊块 $1"],
-      [/^Images (\d+)$/, "图片 $1"],
-      [/^Local images (\d+)$/, "本地图片 $1"],
-      [/^(\d+) text part\(s\), (\d+) image\/table upload\(s\), (\d+) special block\(s\)\.$/, "$1 个文本部分，$2 个图片/表格上传，$3 个特殊内容。"],
-      [/^Write (\d+) text part\(s\) into the X Article body\.$/, "把 $1 个文本部分写入 X 文章正文。"],
-      [/^No article text was found yet\.$/, "尚未找到文章正文。"],
-      [/^(.+) will upload as (.+)\.$/, "$1 会以 $2 上传。"],
-      [/^(.+) will be placed where it appears in your draft\.$/, "$1 会放在草稿中的对应位置。"],
-      [/^(\d+) more step\(s\) are hidden here but included during import\.$/, "这里隐藏了 $1 个步骤，但导入时会包含。"],
-      [/^(\d+) marker operation\(s\), (\d+) media upload\(s\), (\d+) atomic replacement\(s\)\.$/, "$1 个特殊内容步骤，$2 个媒体上传，$3 个特殊内容放置。"],
-      [/^(\d+) special-content step\(s\), (\d+) media upload\(s\), (\d+) special block\(s\)\.$/, "$1 个特殊内容步骤，$2 个媒体上传，$3 个特殊内容放置。"],
-      [/^(\d+) article-body character\(s\) will be written first; (\d+) plain-text character\(s\) are kept as fallback\.$/, "会先写入 $1 个正文字符；另保留 $2 个纯文本字符作为备用。"],
-      [/^(\d+) article-body character\(s\) will be written first, with (\d+) plain-text fallback character\(s\)\.$/, "会先写入 $1 个正文字符；另保留 $2 个纯文本字符作为备用。"],
-      [/^(\d+) HTML character\(s\) will be pasted first; (\d+) plain-text character\(s\) are kept as fallback\.$/, "会先写入 $1 个正文字符；另保留 $2 个纯文本字符作为备用。"],
-      [/^(\d+) special block\(s\) and (\d+) media item\(s\) need editor access\.$/, "$1 个特殊内容块和 $2 个媒体项需要编辑器访问。"],
-      [/^(.+) marker (.+) uploads (.+), then relocates the X media block\.$/, "$1 会上传 $3，并放到正确位置。"],
-      [/^(.+) uploads (.+) and moves it into place\.$/, "$1 会上传 $2，并放到正确位置。"],
-      [/^Marker (.+) becomes an X (.+) atomic block\.$/, "$2 会作为 X 的特殊内容插入。"],
-      [/^(.+) becomes an X (.+)\.$/, "$1 会作为 X 的 $2 插入。"],
-      [/^Text (\d+)$/, "文本 $1"],
-      [/^HTML (\d+)$/, "文本 $1"],
-      [/^Atomic (\d+)$/, "特殊内容 $1"],
-      [/^Special (\d+)$/, "特殊内容 $1"],
-      [/^Images (\d+)$/, "图片 $1"],
-      [/^Local (\d+)$/, "本地 $1"],
-      [/^(.+) captured (.+)$/, "已捕获 $1，时间 $2"],
-      [/^(.+) record saved at (.+)$/, "$1 记录已保存，时间 $2"],
-      [/^Import complete in (.+)\.$/, "导入完成，用时 $1。"],
-      [/^Writing complete in (.+)\.$/, "写入完成，用时 $1。"],
-      [/^Writing complete in (.+) with (\d+) media warning\(s\)\.$/, "写入完成，用时 $1；有 $2 个媒体提醒。"],
-      [/^Article written(?: in (.+))?\. (.+) image upload\(s\) timed out in X\. Wait a moment, then write again or split the article if it has many images\.$/, (_, elapsed, images) => elapsed ? `文章已写入，用时 ${elapsed}。${images} 张图片在 X 上传时等待过久。可以稍等后再次写入，或把多图文章拆成多篇。` : `文章已写入。${images} 张图片在 X 上传时等待过久。可以稍等后再次写入，或把多图文章拆成多篇。`],
-      [/^(\d+) image upload\(s\) timed out in X; (\d+)\/(\d+) media item\(s\), (.+)\.$/, "$1 张图片在 X 上传时等待过久；已上传 $2/$3 个媒体项，用时 $4。"],
-      [/^(.+) body image\(s\) kept as Markdown links; (.+) table image\(s\) kept as Markdown tables; (.+) cover image\(s\) not applied; (.+)\/(.+) embed\/code item\(s\), (.+)\.$/, "$1 张正文图片保留为 Markdown 链接；$2 个表格保留为 Markdown；$3 张封面图片未能设置；特殊内容 $4/$5，用时 $6。"],
-      [/^(.+) body image\(s\) kept as Markdown links; (.+) table image\(s\) kept as Markdown tables; (.+)\/(.+) embed\/code item\(s\), (.+)\.$/, "$1 张正文图片保留为 Markdown 链接；$2 个表格保留为 Markdown；特殊内容 $3/$4，用时 $5。"],
-      [/^(.+) body image\(s\) kept as Markdown links; (.+) cover image\(s\) not applied; (.+)\/(.+) embed\/code item\(s\), (.+)\.$/, "$1 张正文图片保留为 Markdown 链接；$2 张封面图片未能设置；特殊内容 $3/$4，用时 $5。"],
-      [/^(.+) table image\(s\) kept as Markdown tables; (.+) cover image\(s\) not applied; (.+)\/(.+) embed\/code item\(s\), (.+)\.$/, "$1 个表格保留为 Markdown；$2 张封面图片未能设置；特殊内容 $3/$4，用时 $5。"],
-      [/^(.+) body image\(s\) kept as Markdown links; (.+)\/(.+) embed\/code item\(s\), (.+)\.$/, "$1 张正文图片保留为 Markdown 链接；特殊内容 $2/$3，用时 $4。"],
-      [/^(.+) table image\(s\) kept as Markdown tables; (.+)\/(.+) embed\/code item\(s\), (.+)\.$/, "$1 个表格保留为 Markdown；特殊内容 $2/$3，用时 $4。"],
-      [/^(.+) cover image\(s\) not applied; (.+)\/(.+) embed\/code item\(s\), (.+)\.$/, "$1 张封面图片未能设置；特殊内容 $2/$3，用时 $4。"],
-      [/^Uploading image (\d+)\/(\d+)\.\.\.$/, "正在上传图片 $1/$2..."],
-      [/^Stop request failed: (.+)$/, "停止请求失败：$1"],
-      [/^First H1 was promoted to article title: (.+)$/, "第一个 H1 会作为文章标题：$1"],
-      [/^Cover candidate: (.+)$/, "封面候选：$1"],
-      [/^Import failed: (.+)$/, "导入失败：$1"],
-      [/^Target locked: (.+)\.$/, "目标已锁定：$1。"],
-      [/^Article confirmed: article (.+)\.$/, "已确认文章：文章 $1。"],
-      [/^Article confirmed: the open X Article\.$/, "已确认文章：当前打开的 X 文章。"],
-      [/^Publishing check found (\d+) blocker\(s\)\.$/, "发布前检查发现 $1 个阻塞项。"],
-      [/^Selected: (.+)$/, "已选择：$1"],
-      [/^(.+) - read access granted\.$/, "$1 - 已获得读取权限。"],
-      [/^(.+) - permission needed\.$/, "$1 - 需要选择文件夹。"]
-    ];
-    for (const [pattern, replacement] of patterns) {
-      if (pattern.test(source)) return source.replace(pattern, replacement);
-    }
-    return source;
+    return sidepanelPatterns.translatePatternText(source);
   }
 
   function reversePatternText(text) {
-    const patterns = [
-      [/^(\d+)\/(\d+) 就绪$/, "$1/$2 ready"],
-      [/^(\d+)\/(\d+) 项检查就绪$/, "$1/$2 checks ready"],
-      [/^(\d+)\/(\d+) 个导入后检查步骤就绪。$/, "$1/$2 live verification steps ready."],
-      [/^(\d+)\/(\d+) 个实时验证步骤就绪。$/, "$1/$2 live verification steps ready."],
-      [/^(\d+)\/(\d+) 个完成记录项就绪。$/, "$1/$2 proof items ready."],
-      [/^(\d+)\/(\d+) 个证明项就绪。$/, "$1/$2 proof items ready."],
-      [/^(\d+) 篇待处理，(\d+) 篇已写入$/, "$1 drafts, $2 written"],
-      [/^已记录 (\d+)\/(\d+) 项文章检查。$/, "$1/$2 live result checks recorded, including the page import button path."],
-      [/^已记录 (\d+)\/(\d+) 项实时结果检查。$/, "$1/$2 live result checks recorded, including the page import button path."],
-      [/^已记录 (\d+)\/(\d+) 项最终结果检查。$/, "$1/$2 final result checks recorded."],
-      [/^(\d+) 个阻塞项，(\d+) 个警告$/, "$1 blocker(s), $2 warning(s)"],
-      [/^(\d+) 个待修复项，(\d+) 个警告$/, "$1 thing(s) to fix, $2 warning(s)"],
-      [/^(\d+) 个待修复项，(\d+)\/(\d+) 已就绪$/, "$1 thing(s) to fix, $2/$3 ready"],
-      [/^(\d+) 个待处理项，(\d+)\/(\d+) 已就绪$/, "$1 item(s) waiting, $2/$3 ready"],
-      [/^(\d+) 个阶段阻塞，(\d+) 个完成$/, "$1 blocked stage(s), $2 complete"],
-      [/^(\d+) 个阻塞项，(\d+)\/(\d+) 已证明$/, "$1 blocker(s), $2/$3 proven"],
-      [/^(\d+) 个待处理项，(\d+)\/(\d+) 已证明$/, "$1 pending item(s), $2/$3 proven"],
-      [/^(\d+) 条记录中有 (\d+) 条匹配。$/, "$2 of $1 record(s) match this search."],
-      [/^(\d+) 条本地记录，最新在前。$/, "$1 record(s), newest first."],
-      [/^(\d+) 条记录，最新在前。$/, "$1 record(s), newest first."],
-      [/^(\d+) 个实时事件；导入完成。$/, "$1 live event(s); import complete."],
-      [/^(\d+) 个实时事件；导入失败。$/, "$1 live event(s); import failed."],
-      [/^(\d+) 个实时事件；导入中。$/, "$1 live event(s); import in progress."],
-      [/^已记录 (\d+) 个实时事件。$/, "$1 live event(s) recorded."],
-      [/^(\d+) 个块，已检测标题$/, "$1 blocks, titled"],
-      [/^(\d+) 个块，(\d+) 个字符，可以写入。$/, "$1 block(s), $2 character(s), ready to write."],
-      [/^标题已检测 · (\d+) 张图片 · (\d+) 个代码块$/, "Title found · $1 images · $2 code blocks"],
-      [/^未检测标题 · (\d+) 张图片 · (\d+) 个代码块$/, "No title · $1 images · $2 code blocks"],
-      [/^(\d+(?:,\d+)*) 字 · 图片 (\d+) · 代码块 (\d+)$/, "$1 chars · $2 images · $3 code blocks"],
-      [/^(\d+(?:,\d+)*) 字$/, "$1 chars"],
-      [/^(\d+(?:,\d+)*) 字 · (\d+(?:,\d+)*) 段 · (\d+(?:,\d+)*) 图$/, "$1 chars · $2 text blocks · $3 images"],
-      [/^已加入 (\d+) 篇 Markdown 草稿。$/, "Queued $1 Markdown drafts."],
-      [/^(\d+) 篇草稿在队列中$/, "$1 queued drafts"],
-      [/^(\d+) 篇队列草稿已就绪。$/, "$1 queued drafts ready."],
-      [/^(\d+) 篇草稿在队列中。$/, "$1 draft(s) queued."],
-      [/^(\d+) 个上传项需要 X 处理器。$/, "$1 upload items need X handler."],
-      [/^(\d+) 个上传项就绪。$/, "$1 upload items ready."],
-      [/^(\d+) 张图片已上传，(\d+) 张保留为链接$/, "$1 image(s) uploaded, $2 kept as links"],
-      [/^(\d+) 张图片已就绪，(\d+) 张需要处理$/, "$1 image(s) ready, $2 kept as links"],
-      [/^(\d+) 张图片已上传$/, "$1 image(s) uploaded"],
-      [/^图片：(\d+)$/, "Images: $1"],
-      [/^网页图片：(\d+)$/, "Web images: $1"],
-      [/^网页图片：(\d+) 已就绪$/, "Web images: $1 ready"],
-      [/^网页图片：(\d+) 张可能保留为链接$/, "Web images: $1 may stay as links"],
-      [/^还有 (\d+) 个导入项$/, "$1 more import item(s)"],
-      [/^还有 (\d+) 个账本项$/, "$1 more ledger item(s)"],
-      [/^另有 (\d+) 个特殊内容步骤已隐藏。$/, "$1 additional special-content step(s) hidden."],
-      [/^另有 (\d+) 个标记操作已隐藏。$/, "$1 additional marker operation(s) hidden."],
-      [/^特殊内容 (\d+)$/, "Special $1"],
-      [/^原子块 (\d+)$/, "Atomic $1"],
-      [/^图片 (\d+)$/, "Images $1"],
-      [/^本地 (\d+)$/, "Local $1"]
-    ];
-    for (const [pattern, replacement] of patterns) {
-      if (pattern.test(text)) return text.replace(pattern, replacement);
-    }
-    return null;
+    return sidepanelPatterns.reversePatternText(text);
   }
 
   function translateNodeText(root = document.body) {
@@ -3044,12 +1269,19 @@
 
   async function restoreLanguage() {
     if (i18n) {
-      currentLanguage = await i18n.restoreLanguage({ render: false });
+      let preference = null;
+      if (hasChromeApi()) {
+        const stored = await startupStorage();
+        preference = stored[STORAGE_LANGUAGE] || null;
+      }
+      currentLanguage = preference
+        ? await i18n.setLanguage(preference, { persist: false, render: false })
+        : await i18n.restoreLanguage({ render: false });
       await setLanguage(i18n.preference?.() || currentLanguage, { persist: false });
       return;
     }
     if (hasChromeApi()) {
-      const stored = await chrome.storage.local.get(STORAGE_LANGUAGE);
+      const stored = await startupStorage();
       if (stored[STORAGE_LANGUAGE]) {
         await setLanguage(stored[STORAGE_LANGUAGE], { persist: false });
         return;
@@ -3587,8 +1819,17 @@
     if (activeItem && activeItem.markdown === text) return;
     activeQueueItemId = null;
     draftQueue = draftQueue.map((item) => item.status === "loaded" ? { ...item, status: "queued" } : item);
+    markDraftQueueMediaStale();
     persistDraftQueue();
     renderDraftQueue();
+  }
+
+  function markDraftQueueMediaStale() {
+    draftQueueMediaReady = !draftQueue.length;
+    if (!draftQueueMediaIdleHandle) return;
+    if (typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(draftQueueMediaIdleHandle);
+    else window.clearTimeout(draftQueueMediaIdleHandle);
+    draftQueueMediaIdleHandle = null;
   }
 
   function persistDraftQueue() {
@@ -3596,6 +1837,7 @@
     const nextQueue = trimQueueForStorage(draftQueue);
     if (nextQueue.length !== draftQueue.length) {
       draftQueue = nextQueue;
+      markDraftQueueMediaStale();
       if (activeQueueItemId && !draftQueue.some((item) => item.id === activeQueueItemId)) activeQueueItemId = null;
       renderDraftQueue();
       log("Queue was trimmed to fit browser storage.");
@@ -3608,7 +1850,9 @@
   function queueSummaryText() {
     const total = draftQueue.length;
     if (!total) return "Paste Markdown here, choose a file, or drop .md files.";
-    return `${total} draft${total === 1 ? "" : "s"} queued`;
+    return isChineseLanguage()
+      ? `${formatCompactCount(total, { zhTenThousand: false })} 篇草稿`
+      : `${formatCompactCount(total, { zhTenThousand: false })} draft${total === 1 ? "" : "s"}`;
   }
 
   function queuedDraftAddedDetail(count = 1) {
@@ -3645,9 +1889,81 @@
     setDraftDropStatus(MARKDOWN_LOAD_ERROR_TITLE, detail, "error");
   }
 
-  function queueStatusLabel(item) {
-    if (item.status === "writing" || item.id === activeWriteQueueItemId) return "Writing";
-    return "Queued";
+  function queueItemMediaSummary(item) {
+    if (!draftQueueMediaReady) return {
+      tone: "ok",
+      text: "",
+      title: "",
+      estimate: null
+    };
+    const estimate = mediaUploadEstimate(parseDraftMarkdown(item?.markdown || ""));
+    const values = mediaNoteValues(estimate);
+    if (estimate.overSoftLimit) {
+      return {
+        tone: "danger",
+        text: localizeInterpolated("Too many images: remove {extra}", { extra: values.extra }),
+        title: mediaLimitWarningText(estimate),
+        estimate
+      };
+    }
+    return {
+      tone: "ok",
+      text: "",
+      title: "",
+      estimate
+    };
+  }
+
+  function scheduleDraftQueueMediaRender() {
+    if (!queueModeActive() || draftQueueMediaReady) return;
+    if (draftQueueMediaIdleHandle) return;
+    draftQueueMediaIdleHandle = runWhenIdle(() => {
+      draftQueueMediaIdleHandle = null;
+      if (!queueModeActive() || draftQueueMediaReady) return;
+      draftQueueMediaReady = true;
+      renderDraftQueue();
+    }, STARTUP_DRAFT_ANALYZE_DELAY_MS);
+  }
+
+  function normalizeQueuePreviewText(text) {
+    return String(text || "")
+      .replace(/[!"#$%&'()*+,./:;<=>?@[\\\]^_`{|}~，。！？、：；“”‘’（）《》【】]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+  }
+
+  function queueItemTitleText(item) {
+    const title = String(item?.title || "").trim();
+    const fileName = String(item?.fileName || "").trim();
+    if (title && title !== "Untitled Markdown" && title !== fileName) return title;
+    return markdownMeaningfulLines(item?.markdown || "")[0] || "";
+  }
+
+  function queueItemDisplayTitle(item) {
+    return truncateText(queueItemTitleText(item), 72) || localizeText("Untitled Markdown");
+  }
+
+  function queueItemExcerpt(item) {
+    const titleToken = normalizeQueuePreviewText(queueItemTitleText(item));
+    const lines = markdownMeaningfulLines(item?.markdown || "")
+      .filter((line) => normalizeQueuePreviewText(line) !== titleToken);
+    return truncateText(lines.join(" "), 118);
+  }
+
+  function renderQueueItemMeta(item, media = queueItemMediaSummary(item)) {
+    const safe = shared.escapeHtml;
+    const excerpt = queueItemExcerpt(item);
+    const facts = [
+      { type: "chars", tone: "neutral", text: formatCompactUnit(item.characters || 0, "char", "chars", "字符") }
+    ].concat(media.tone === "danger"
+      ? [{ type: "media", tone: media.tone, text: media.text, title: media.title }]
+      : []);
+    const factHtml = facts.map((fact) => `
+            <span class="draft-queue-fact" data-type="${safe(fact.type)}" data-tone="${safe(fact.tone)}" ${fact.title ? `title="${safe(fact.title)}"` : ""}>${safe(fact.text)}</span>`
+    ).join("");
+    const excerptHtml = excerpt ? `<span class="draft-queue-excerpt">${safe(excerpt)}</span>` : "";
+    return `${excerptHtml}<span class="draft-queue-meta">${factHtml}</span>`;
   }
 
   function createQueueItemFromMarkdown(markdown, { fileName = "", source = "typed", id = queueItemId("queue-draft") } = {}) {
@@ -3690,26 +2006,71 @@
     updateDraftBrief();
   }
 
-  function restoreSingleDraftMarkdown(markdown) {
+  function applyStoredDraftQueue(stored = {}) {
+    draftQueue = Array.isArray(stored[STORAGE_DRAFT_QUEUE])
+      ? stored[STORAGE_DRAFT_QUEUE].map(normalizeQueueItem).filter(Boolean).slice(0, MAX_DRAFT_QUEUE)
+      : [];
+    draftQueueMediaReady = !draftQueue.length;
+    activeQueueItemId = draftQueue.find((item) => item.status === "loaded")?.id || activeQueueItemId;
+    renderDraftQueue();
+  }
+
+  function restoreDraftFromStoredValue(value, { analyze = true } = {}) {
+    const restored = String(value || "");
+    if (queueModeActive()) {
+      const activeItem = draftQueue.find((item) => item.id === activeQueueItemId) || draftQueue[0];
+      suppressNextTypedHistory = true;
+      window.clearTimeout(draftInputHistoryTimer);
+      setDraftText(activeItem?.markdown || "", { preview: false, parseStatus: false, syntax: "defer" });
+      if (analyze) scheduleAnalyzeDraft(STARTUP_DRAFT_ANALYZE_DELAY_MS);
+      renderDraftQueue();
+      return;
+    }
+    if (restored.trim()) {
+      restoreSingleDraftMarkdown(restored, { analyze });
+      return;
+    }
+    setDraftText("", { parseStatus: false });
+    if (analyze) analyzeDraft();
+    else {
+      latestParsed = null;
+      latestCounts = shared.segmentCounts([]);
+      syncRemoteImageAccessStatusFromDraft(null);
+      updateWriteButton();
+    }
+    syncDraftSurface();
+  }
+
+  function applyStartupDraftState(stored = {}) {
+    applyStoredDraftQueue(stored);
+    restoreDraftFromStoredValue(stored[STORAGE_DRAFT], { analyze: false });
+    runWhenIdle(() => {
+      analyzeDraft();
+    }, STARTUP_DRAFT_ANALYZE_DELAY_MS);
+  }
+
+  function restoreSingleDraftMarkdown(markdown, { analyze = true } = {}) {
     const text = String(markdown || "");
     activeQueueItemId = null;
     draftQueue = [];
-    setDraftText(text, { preview: false, parseStatus: false });
-    saveDraft();
+    draftQueueMediaReady = true;
+    setDraftText(text, { preview: false, parseStatus: false, syntax: "defer" });
+    if (analyze) saveDraft();
     syncDraftSurface();
     updateWriteButton();
     if (text.trim()) {
       setDraftDropStatus("Markdown loaded", draftReadyDetail(text.length), "done");
-      scheduleAnalyzeDraft(STARTUP_DRAFT_ANALYZE_DELAY_MS);
+      if (analyze) scheduleAnalyzeDraft(STARTUP_DRAFT_ANALYZE_DELAY_MS);
       return;
     }
-    analyzeDraft();
+    if (analyze) analyzeDraft();
   }
 
   function setSingleDraftMarkdown(markdown, { source = "typed", fileName = null, statusTitle = "Markdown loaded", logMessage = "", remember = true } = {}) {
     const text = String(markdown || "");
     activeQueueItemId = null;
     draftQueue = [];
+    draftQueueMediaReady = true;
     persistDraftQueue();
     suppressNextTypedHistory = true;
     window.clearTimeout(draftInputHistoryTimer);
@@ -3750,6 +2111,7 @@
     }
     const baseQueue = existingSingle ? [existingSingle] : draftQueue;
     draftQueue = [...baseQueue.filter((entry) => `${entry.fileName}\n${entry.markdown}` !== `${item.fileName}\n${item.markdown}`), item].slice(-MAX_DRAFT_QUEUE);
+    markDraftQueueMediaStale();
     persistDraftQueue();
     if (draftQueue.length === 1 && activate) {
       loadQueueItem(item.id, { remember });
@@ -3768,33 +2130,33 @@
     if (!els.draftQueue || !els.draftQueueList) return;
     syncDraftSurface();
     const hasQueue = queueModeActive();
-    if (els.draftQueueMeta) els.draftQueueMeta.textContent = queueSummaryText();
+    if (els.draftQueueMeta) setLocalizedText(els.draftQueueMeta, queueSummaryText());
     if (!hasQueue) {
       els.draftQueueList.innerHTML = "";
       updateWriteButton();
       return;
     }
     const safe = shared.escapeHtml;
-    els.draftQueueList.innerHTML = draftQueue.map((item, index) => `
-      <li class="draft-queue-item" data-queue-id="${safe(item.id)}" data-status="${safe(item.status)}" ${animatedQueueItemIds.has(item.id) ? 'data-motion="entered"' : ""} ${item.id === activeQueueItemId ? 'data-active="true"' : ""}>
+    els.draftQueueList.innerHTML = draftQueue.map((item, index) => {
+      const mediaSummary = queueItemMediaSummary(item);
+      return `
+      <li class="draft-queue-item" data-queue-id="${safe(item.id)}" data-status="${safe(item.status)}" data-media="${safe(mediaSummary.tone)}" ${animatedQueueItemIds.has(item.id) ? 'data-motion="entered"' : ""} ${item.id === activeQueueItemId ? 'data-active="true"' : ""}>
         <button class="draft-queue-main" type="button" data-queue-action="edit" data-queue-id="${safe(item.id)}" title="${safe(localizeText("Edit draft"))}" aria-label="${safe(localizeText("Edit draft"))}">
-          <span>${index + 1}</span>
-          <strong>${safe(item.title || item.fileName || "Untitled Markdown")}</strong>
-          <em>${safe([item.fileName, formatCompactUnit(item.characters || 0, "char", "chars", "字符")].filter(Boolean).join(" · "))}</em>
+          <span class="draft-queue-index">${index + 1}</span>
+          <strong>${safe(queueItemDisplayTitle(item))}</strong>
+          ${renderQueueItemMeta(item, mediaSummary)}
         </button>
-        <span class="draft-queue-state">${safe(localizeText(queueStatusLabel(item)))}</span>
         <div class="draft-queue-actions" aria-label="${safe(localizeText("Draft actions"))}">
-          <button class="record-icon-action draft-queue-edit" type="button" data-queue-action="edit" data-queue-id="${safe(item.id)}" title="${safe(localizeText("Edit draft"))}" aria-label="${safe(localizeText("Edit draft"))}">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.8 4.2a2.9 2.9 0 0 1 4.1 4.1L9.7 18.5 5 19l.5-4.7L15.8 4.2Zm1.4 1.4L7.4 15.4l-.2 1.4 1.4-.2 9.8-9.8a.9.9 0 0 0-1.2-1.2Z"/></svg>
-          </button>
           <button class="record-icon-action draft-queue-copy" type="button" data-queue-action="copy" data-queue-id="${safe(item.id)}" title="${safe(localizeText("Copy text"))}" aria-label="${safe(localizeText("Copy text"))}">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7h10v13H8V7Zm2 2v9h6V9h-6ZM5 4h10v2H7v10H5V4Z"/></svg>
           </button>
         </div>
       </li>
-    `).join("");
+    `;
+    }).join("");
     translateDynamicDom(els.draftQueue);
     updateWriteButton();
+    scheduleDraftQueueMediaRender();
   }
 
   async function restoreDraftQueue() {
@@ -3802,12 +2164,7 @@
       renderDraftQueue();
       return;
     }
-    const stored = await chrome.storage.local.get(STORAGE_DRAFT_QUEUE).catch(() => ({}));
-    draftQueue = Array.isArray(stored[STORAGE_DRAFT_QUEUE])
-      ? stored[STORAGE_DRAFT_QUEUE].map(normalizeQueueItem).filter(Boolean).slice(0, MAX_DRAFT_QUEUE)
-      : [];
-    activeQueueItemId = draftQueue.find((item) => item.status === "loaded")?.id || activeQueueItemId;
-    renderDraftQueue();
+    applyStoredDraftQueue(await startupStorage());
   }
 
   function addDraftQueueItems(items, { activateFirst = false, source = "drop" } = {}) {
@@ -3826,6 +2183,7 @@
     const nextItems = normalized.filter((item) => !known.has(`${item.fileName}\n${item.markdown}`));
     if (!nextItems.length) return [];
     draftQueue = [...baseQueue, ...nextItems].slice(-MAX_DRAFT_QUEUE);
+    markDraftQueueMediaStale();
     if (activateFirst) activeQueueItemId = nextItems[0].id;
     persistDraftQueue();
     markQueueItemsEntered(nextItems);
@@ -3861,6 +2219,7 @@
     draftQueue = draftQueue.map((entry) => entry.id === item.id
       ? { ...entry, status: entry.status === "written" ? "written" : "loaded", loadedAt: new Date().toISOString() }
       : entry.status === "loaded" ? { ...entry, status: "queued" } : entry);
+    markDraftQueueMediaStale();
     suppressNextTypedHistory = true;
     window.clearTimeout(draftInputHistoryTimer);
     setDraftText(item.markdown);
@@ -3887,6 +2246,7 @@
     if (!completedId) return;
     activeWriteQueueItemId = null;
     draftQueue = draftQueue.filter((item) => item.id !== completedId);
+    markDraftQueueMediaStale();
     if (activeQueueItemId === completedId) activeQueueItemId = null;
     if (!draftQueue.length) {
       suppressNextTypedHistory = true;
@@ -3906,6 +2266,7 @@
     draftQueue = draftQueue.map((item) =>
       item.id === queueItemId && item.status === "writing" ? { ...item, status: "queued" } : item
     );
+    markDraftQueueMediaStale();
     persistDraftQueue();
     renderDraftQueue();
   }
@@ -3923,6 +2284,7 @@
       updatedAt: new Date().toISOString()
     };
     draftQueue = draftQueue.map((entry) => entry.id === id ? updated : entry);
+    markDraftQueueMediaStale();
     if (id === activeQueueItemId) {
       suppressNextTypedHistory = true;
       window.clearTimeout(draftInputHistoryTimer);
@@ -3951,6 +2313,76 @@
     document.documentElement.dataset.modalOpen = open ? "true" : "false";
   }
 
+  function recordEditorText() {
+    return els.recordEditTextarea?.value || "";
+  }
+
+  function updateRecordEditorStats() {
+    if (!els.recordEditStats) return;
+    const text = recordEditorText();
+    setLocalizedText(els.recordEditStats, editorStatsText(text, markdownSegmentCounts(text)));
+  }
+
+  function syncRecordEditSyntaxScroll() {
+    if (!els.recordEditTextarea || !els.recordEditHighlight) return;
+    els.recordEditHighlight.scrollTop = els.recordEditTextarea.scrollTop;
+    els.recordEditHighlight.scrollLeft = els.recordEditTextarea.scrollLeft;
+  }
+
+  function renderRecordEditHighlight() {
+    renderMarkdownSyntaxHighlight(els.recordEditHighlight, recordEditorText());
+    syncRecordEditSyntaxScroll();
+  }
+
+  function updateRecordEditPreview() {
+    if (!els.recordEditPreviewBody) return;
+    const text = recordEditorText();
+    els.recordEditPreviewBody.innerHTML = text.trim()
+      ? markdownPreviewHtml(text)
+      : emptyMarkdownPreviewHtml();
+    translateDynamicDom(els.recordEditPreview || els.recordEditSheet);
+  }
+
+  function updateRecordEditModeToggle() {
+    updateEditorModeToggle(els.recordEditModeToggle, recordEditMode);
+  }
+
+  function updateRecordEditorMode(mode = recordEditMode) {
+    recordEditMode = DRAFT_EDITOR_MODES.has(mode) ? mode : "edit";
+    const isEdit = recordEditMode === "edit";
+    if (els.recordEditBody) els.recordEditBody.dataset.mode = recordEditMode;
+    if (els.recordEditInputWrap) {
+      els.recordEditInputWrap.hidden = !isEdit;
+      els.recordEditInputWrap.setAttribute("aria-hidden", isEdit ? "false" : "true");
+    }
+    if (els.recordEditTextarea) {
+      els.recordEditTextarea.setAttribute("aria-hidden", isEdit ? "false" : "true");
+      els.recordEditTextarea.tabIndex = isEdit ? 0 : -1;
+    }
+    if (els.recordEditToolbar) els.recordEditToolbar.hidden = !isEdit;
+    if (els.recordEditPreview) {
+      els.recordEditPreview.hidden = isEdit;
+      els.recordEditPreview.dataset.previewMode = "read";
+      els.recordEditPreview.setAttribute("aria-hidden", isEdit ? "true" : "false");
+    }
+    updateRecordEditModeToggle();
+    els.recordEditToolbar?.querySelectorAll("[data-editor-command]").forEach((button) => {
+      button.disabled = !isEdit;
+    });
+    if (isEdit) renderRecordEditHighlight();
+    else updateRecordEditPreview();
+  }
+
+  function updateRecordEditorChrome() {
+    updateRecordEditorStats();
+    renderRecordEditHighlight();
+    if (recordEditMode === "read") updateRecordEditPreview();
+  }
+
+  function handleRecordEditorInput() {
+    updateRecordEditorChrome();
+  }
+
   function configureMarkdownEditor({ title, meta, value, primaryLabel, mode, id }) {
     if (!els.recordEditSheet || !els.recordEditTextarea) return;
     activeDraftEditor = { mode, id };
@@ -3965,6 +2397,8 @@
     els.recordEditTextarea.dataset.queueId = mode === "queue" || mode === "new" ? id : "";
     els.recordEditTextarea.value = value;
     if (els.recordEditWriteButton) els.recordEditWriteButton.hidden = mode !== "queue";
+    updateRecordEditorMode("edit");
+    updateRecordEditorChrome();
     setMarkdownEditorOpen(true);
     translateDynamicDom(els.recordEditSheet);
     window.setTimeout(() => els.recordEditTextarea?.focus?.(), 0);
@@ -4907,20 +3341,16 @@
     );
     if (els.importHint) {
       const hint = compactWriteHint({ hasDraft, hasQueue, busy: busy || batchWriting });
-      els.importHint.dataset.tone = hint.tone;
-      delete els.importHint.dataset.i18n;
-      setLocalizedText(els.importHint, hint.text);
+      applyImportHint(hint);
     }
     translateDynamicDom(actions || button);
   }
 
   function compactWriteHint({ hasDraft, hasQueue = false, busy = false } = {}) {
     if (busy) return { tone: "ready", text: hasQueue ? "Writing queued drafts one by one." : "Writing into the X draft. You can watch the final result in the X Article tab." };
-    if (hasQueue) return { tone: "ready", text: "Queued drafts are written one by one. Each successful draft leaves the list." };
-    if (!hasDraft) return { tone: "idle", text: "Add a Markdown draft first." };
+    if (hasQueue || !hasDraft) return quietImportHint();
     const remoteCount = remoteHttpImageSegments(latestParsed).length;
     if (remoteCount) return remoteImageWriteHint(remoteCount);
-    const imageCount = latestCounts?.image || 0;
     const mediaEstimate = mediaUploadEstimate(latestParsed);
     if (mediaEstimate.overSoftLimit) {
       return {
@@ -4928,18 +3358,31 @@
         text: "Fix the image count in the editor."
       };
     }
-    if (mediaEstimate.total) {
+    if (mediaEstimate.nearSoftLimit) {
       return {
-        tone: mediaEstimate.nearSoftLimit ? "warn" : "ready",
-        text: mediaEstimate.nearSoftLimit ? "Close to the image limit." : "Ready to write."
+        tone: "warn",
+        text: "Close to the image limit."
       };
     }
-    return {
-      tone: "ready",
-      text: imageCount
-        ? `Images: ${imageCount}`
-        : "Ready to write."
-    };
+    return quietImportHint();
+  }
+
+  function quietImportHint() {
+    return { hidden: true, tone: "ready", text: "" };
+  }
+
+  function applyImportHint(hint = quietImportHint()) {
+    const hidden = Boolean(hint.hidden);
+    els.importHint.hidden = hidden;
+    els.importHint.setAttribute("aria-hidden", hidden ? "true" : "false");
+    els.importHint.dataset.tone = hint.tone || "ready";
+    delete els.importHint.dataset.i18n;
+    if (hidden) {
+      delete els.importHint.__xposterSourceText;
+      els.importHint.textContent = "";
+      return;
+    }
+    setLocalizedText(els.importHint, hint.text || "");
   }
 
   function remoteImageWriteHint(remoteCount) {
@@ -4965,10 +3408,7 @@
         text: `Web images: ${remoteImageProbeStatus.fail} may stay as links`
       };
     }
-    if (remoteImageProbeStatus.state === "checked") {
-      return { tone: "ready", text: mediaEstimate.total ? mediaCapacityText(mediaEstimate) : `Web images: ${remoteCount} ready` };
-    }
-    return { tone: "ready", text: mediaEstimate.total ? mediaCapacityText(mediaEstimate) : `Web images: ${remoteCount}` };
+    return quietImportHint();
   }
 
   function updateIssueQueue(checks = null, gate = null) {
@@ -5708,11 +4148,7 @@
   }
 
   function setCompactImportStatus(summary = null) {
-    if (els.importHint) {
-      els.importHint.dataset.tone = "done";
-      delete els.importHint.dataset.i18n;
-      setLocalizedText(els.importHint, "Written. Review in X.");
-    }
+    if (els.importHint) applyImportHint({ tone: "done", text: "Written. Review in X." });
   }
 
   function dismissDraftDropStatus() {
@@ -6191,6 +4627,41 @@
     syncRecordPanel({ translate: false });
   }
 
+  function paintStartupShell() {
+    applyTheme(currentThemeMode);
+    populateLanguageSelect();
+    setDraftEditorMode("edit");
+    syncPanelLayout();
+    restoreVaultState();
+    updateLiveProgress();
+    syncDraftSurface();
+    updateWriteButton();
+  }
+
+  async function restoreStartupState() {
+    if (!hasChromeApi()) {
+      applyTheme(currentThemeMode);
+      applyImportOptions(importOptions, { refresh: false });
+      applyArticleExportOptions(articleExportOptions);
+      applySuccessFeedbackOptions(successFeedbackOptions);
+      await restoreLanguage();
+      analyzeDraft();
+      return;
+    }
+    const stored = await startupStorage();
+    applyTheme(stored[STORAGE_THEME] || currentThemeMode);
+    applyImportOptions(stored[STORAGE_IMPORT_OPTIONS] || importOptions, { refresh: false });
+    applyArticleExportOptions(stored[STORAGE_ARTICLE_EXPORT_SETTINGS] || articleExportOptions);
+    applySuccessFeedbackOptions(stored[STORAGE_SUCCESS_FEEDBACK] || successFeedbackOptions);
+    applyStartupDraftState(stored);
+    await restoreLanguage();
+    for (const input of getLiveResultItems()) {
+      input.checked = Boolean((stored[STORAGE_LIVE_RESULT] || {})[input.dataset.liveCheck]);
+    }
+    liveResultChecks = stored[STORAGE_LIVE_RESULT] || {};
+    updateLiveResultMeta();
+  }
+
   function updateRecoveryPanel(checks = null, gate = null) {
     if (!els.recoveryPanel) return;
     const resolvedChecks = checks || buildPreflightChecks();
@@ -6558,6 +5029,7 @@
     activeWriteQueueItemId = queueItemId;
     if (queueItemId) {
       draftQueue = draftQueue.map((item) => item.id === queueItemId ? { ...item, status: "writing" } : item);
+      markDraftQueueMediaStale();
       renderDraftQueue();
     }
     const parsed = ensureLatestParsedFromDraft();
@@ -6621,10 +5093,15 @@
     }
     if (queueItemId) {
       draftQueue = draftQueue.map((item) => item.id === queueItemId ? { ...item, status: "writing" } : item);
+      markDraftQueueMediaStale();
       persistDraftQueue();
       renderDraftQueue();
     }
-    const response = await sendToActiveTab({ type: "xposter:import-markdown", markdown, options: importOptionsPayload() });
+    const response = await sendToActiveTab({
+      type: "xposter:import-markdown",
+      markdown,
+      options: writeOptionsPayload({ forceNewArticle: batch })
+    });
     importCancelRequested = false;
     if (response?.ok) {
       const seconds = ((response.summary?.elapsedMs || 0) / 1000).toFixed(1);
@@ -6857,7 +5334,7 @@
 
   async function restoreLiveResultChecks() {
     if (hasChromeApi()) {
-      const stored = await chrome.storage.local.get(STORAGE_LIVE_RESULT);
+      const stored = await startupStorage();
       liveResultChecks = stored[STORAGE_LIVE_RESULT] || {};
     }
     for (const input of getLiveResultItems()) input.checked = Boolean(liveResultChecks[input.dataset.liveCheck]);
@@ -7176,24 +5653,8 @@
       analyzeDraft();
       return;
     }
-    const stored = await chrome.storage.local.get(STORAGE_DRAFT);
-    const restored = String(stored[STORAGE_DRAFT] || "");
-    if (queueModeActive()) {
-      const activeItem = draftQueue.find((item) => item.id === activeQueueItemId) || draftQueue[0];
-      suppressNextTypedHistory = true;
-      window.clearTimeout(draftInputHistoryTimer);
-      setDraftText(activeItem?.markdown || "", { preview: false });
-      scheduleAnalyzeDraft(STARTUP_DRAFT_ANALYZE_DELAY_MS);
-      renderDraftQueue();
-      return;
-    }
-    if (restored.trim()) {
-      restoreSingleDraftMarkdown(restored);
-      return;
-    }
-    setDraftText("");
-    analyzeDraft();
-    syncDraftSurface();
+    const stored = await startupStorage();
+    restoreDraftFromStoredValue(stored[STORAGE_DRAFT], { analyze: true });
   }
 
   function installDraftStorageSync() {
@@ -7215,12 +5676,13 @@
         }
       }
       if (changes[STORAGE_DRAFT_QUEUE]) {
-        const previousLength = draftQueue.length;
-        const previousIds = new Set(draftQueue.map((item) => item.id));
-        draftQueue = Array.isArray(changes[STORAGE_DRAFT_QUEUE].newValue)
-          ? changes[STORAGE_DRAFT_QUEUE].newValue.map(normalizeQueueItem).filter(Boolean).slice(0, MAX_DRAFT_QUEUE)
-          : [];
-        if (activeQueueItemId && !draftQueue.some((item) => item.id === activeQueueItemId)) activeQueueItemId = null;
+      const previousLength = draftQueue.length;
+      const previousIds = new Set(draftQueue.map((item) => item.id));
+      draftQueue = Array.isArray(changes[STORAGE_DRAFT_QUEUE].newValue)
+        ? changes[STORAGE_DRAFT_QUEUE].newValue.map(normalizeQueueItem).filter(Boolean).slice(0, MAX_DRAFT_QUEUE)
+        : [];
+      markDraftQueueMediaStale();
+      if (activeQueueItemId && !draftQueue.some((item) => item.id === activeQueueItemId)) activeQueueItemId = null;
         if (draftQueue.length > previousLength) {
           markQueueItemsEntered(draftQueue.filter((item) => !previousIds.has(item.id)));
         }
@@ -7234,9 +5696,9 @@
   }
 
   async function restoreVaultState() {
-    els.vaultState.textContent = "Choose from an active X page";
-    els.vaultDetail.textContent = "Choose from an active X page when Markdown uses relative image paths.";
-    els.vaultSettingsText.textContent = "xPoster will ask when a Markdown draft uses local image paths.";
+    setLocalizedText(els.vaultState, "Choose from an active X page");
+    setLocalizedText(els.vaultDetail, "Choose from an active X page when Markdown uses relative image paths.");
+    setLocalizedText(els.vaultSettingsText, "xPoster will ask when a Markdown draft uses local image paths.");
     setVaultClearEnabled(false);
   }
 
@@ -8066,10 +6528,10 @@
     const item = draftQueue.find((entry) => entry.id === queueId);
     if (!item) return;
     configureMarkdownEditor({
-      title: item.title || item.fileName || "Queued Markdown",
-      meta: [item.fileName, formatCompactUnit(item.characters || 0, "char", "chars", "字符"), queueStatusLabel(item)].filter(Boolean).join(" · "),
+      title: queueItemDisplayTitle(item) || localizeText("Queued Markdown"),
+      meta: formatCompactUnit(item.characters || 0, "char", "chars", "字符"),
       value: item.markdown,
-      primaryLabel: "Save only",
+      primaryLabel: "Save",
       mode: "queue",
       id: item.id
     });
@@ -8084,12 +6546,13 @@
       els.recordEditTextarea.dataset.recordId = "";
       els.recordEditTextarea.dataset.queueId = "";
     }
+    updateRecordEditorMode("edit");
     if (els.recordEditWriteButton) els.recordEditWriteButton.hidden = true;
     setMarkdownEditorOpen(false);
   }
 
   async function copyEditedMarkdown() {
-    const edited = recordEditorTextarea()?.value || "";
+    const edited = recordEditorText();
     await copyMarkdownText(edited, {
       fallbackRecordId: activeDraftEditor?.mode === "record" ? activeDraftEditor.id : null,
       success: "Edited Markdown copied.",
@@ -8098,7 +6561,7 @@
   }
 
   function saveEditedMarkdown() {
-    const edited = recordEditorTextarea()?.value || "";
+    const edited = recordEditorText();
     if (!edited.trim()) {
       log("Markdown snapshot not available.");
       return;
@@ -8125,7 +6588,7 @@
   }
 
   async function writeEditedMarkdown() {
-    const edited = recordEditorTextarea()?.value || "";
+    const edited = recordEditorText();
     if (!edited.trim()) {
       log("Markdown snapshot not available.");
       return;
@@ -8138,10 +6601,6 @@
     if (!updateQueueItemMarkdown(editor.id, edited)) return;
     closeMarkdownEditor();
     await importQueueItem(editor.id);
-  }
-
-  function recordEditorTextarea() {
-    return els.recordEditTextarea || null;
   }
 
   async function handleRecordHistoryClick(event) {
@@ -8157,7 +6616,15 @@
       restoreRecordMarkdown(recordId);
     } else if (action === "edit") {
       openRecordEditor(recordId);
-    } else if (action === "cancel-edit") {
+    } else if (action === "copy-markdown") {
+      await copyRecordMarkdown(recordId);
+    } else {
+      await handleMarkdownEditorAction(action);
+    }
+  }
+
+  async function handleMarkdownEditorAction(action) {
+    if (action === "cancel-edit") {
       closeMarkdownEditor();
     } else if (action === "use-edited") {
       saveEditedMarkdown();
@@ -8165,8 +6632,6 @@
       await writeEditedMarkdown();
     } else if (action === "copy-edited") {
       await copyEditedMarkdown();
-    } else if (action === "copy-markdown") {
-      await copyRecordMarkdown(recordId);
     }
   }
 
@@ -8176,12 +6641,17 @@
     const action = button.dataset.recordAction;
     if (action === "cancel-edit") {
       closeMarkdownEditor();
-    } else if (action === "use-edited") {
-      saveEditedMarkdown();
-    } else if (action === "write-edited") {
-      await writeEditedMarkdown();
-    } else if (action === "copy-edited") {
-      await copyEditedMarkdown();
+    } else if (action === "editor-command") {
+      updateRecordEditorMode("edit");
+      applyTextareaCommand(button.dataset.editorCommand, {
+        textarea: els.recordEditTextarea,
+        onChange: handleRecordEditorInput
+      });
+      els.recordEditTextarea?.focus?.();
+    } else if (action === "toggle-preview") {
+      updateRecordEditorMode(recordEditMode === "read" ? "edit" : "read");
+    } else {
+      await handleMarkdownEditorAction(action);
     }
   }
 
@@ -8608,6 +7078,8 @@
     if (event.target === els.recordEditSheet) closeMarkdownEditor();
   });
   els.recordEditSheet?.addEventListener("click", handleMarkdownEditorClick);
+  els.recordEditTextarea?.addEventListener("input", handleRecordEditorInput);
+  els.recordEditTextarea?.addEventListener("scroll", syncRecordEditSyntaxScroll);
   els.recordEditSheet?.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       event.preventDefault();
@@ -8676,8 +7148,7 @@
     await runRunbookAction(button.dataset.recoveryAction);
   });
   getLiveResultItems().forEach((input) => input.addEventListener("change", saveLiveResultChecks));
-  setDraftEditorMode("edit");
-  syncPanelLayout();
+  paintStartupShell();
   installDraftStorageSync();
   installDraftDropTray();
   document.querySelectorAll(".tab").forEach((tab) => {
@@ -8686,19 +7157,9 @@
     });
   });
 
-  restoreDraftQueue().then(() => restoreDraft()).catch(() => analyzeDraft());
-  restoreVaultState();
-  restoreTheme();
-  restoreImportOptions();
-  restoreArticleExportOptions();
-  restoreSuccessFeedbackOptions();
+  restoreStartupState().catch(() => analyzeDraft());
   installSystemThemeSync();
-  updateLiveProgress();
-  restoreLanguage();
   scheduleRecordHistoryRestore();
-  runWhenIdle(() => {
-    void restoreLiveResultChecks();
-  }, STARTUP_IDLE_TIMEOUT_MS);
   runWhenIdle(() => {
     void refreshPageState();
   }, STARTUP_PAGE_STATE_TIMEOUT_MS);

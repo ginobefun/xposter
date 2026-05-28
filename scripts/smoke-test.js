@@ -4,8 +4,9 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const root = path.resolve(__dirname, "..");
+const readText = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
 const readJson = (relativePath) =>
-  JSON.parse(fs.readFileSync(path.join(root, relativePath), "utf8"));
+  JSON.parse(readText(relativePath));
 
 const manifest = readJson("manifest.json");
 const pkg = readJson("package.json");
@@ -46,6 +47,8 @@ const requiredFiles = [
   "src/content.js",
   "src/main-world.js",
   "src/shared.js",
+  "src/sidepanel-messages.js",
+  "src/sidepanel-patterns.js",
   "fixtures/live-x-smoke.md",
   "README.zh-CN.md",
   "docs/usage.md",
@@ -76,7 +79,7 @@ for (const resourceGroup of manifest.web_accessible_resources || []) {
 }
 
 const shared = require(path.join(root, "src/shared.js"));
-const fixture = fs.readFileSync(path.join(root, "fixtures/live-x-smoke.md"), "utf8");
+const fixture = readText("fixtures/live-x-smoke.md");
 const parsed = shared.parseMarkdown(fixture);
 const counts = shared.segmentCounts(parsed.segments);
 const plan = shared.buildPastePlan(parsed.segments);
@@ -120,14 +123,16 @@ const coverOnlyPlan = shared.buildPastePlan(
     }
   }
 );
-const contentScriptText = fs.readFileSync(path.join(root, "src/content.js"), "utf8");
-const backgroundText = fs.readFileSync(path.join(root, "src/background.js"), "utf8");
-const mainWorldText = fs.readFileSync(path.join(root, "src/main-world.js"), "utf8");
-const sidepanelText = fs.readFileSync(path.join(root, "sidepanel.js"), "utf8");
-const sidepanelHtml = fs.readFileSync(path.join(root, "sidepanel.html"), "utf8");
-const diagnosticsHtml = fs.readFileSync(path.join(root, "diagnostics.html"), "utf8");
-const sidepanelCss = fs.readFileSync(path.join(root, "sidepanel.css"), "utf8");
-const sharedText = fs.readFileSync(path.join(root, "src/shared.js"), "utf8");
+const contentScriptText = readText("src/content.js");
+const backgroundText = readText("src/background.js");
+const mainWorldText = readText("src/main-world.js");
+const sidepanelText = readText("sidepanel.js");
+const sidepanelMessagesText = readText("src/sidepanel-messages.js");
+const sidepanelPatternsText = readText("src/sidepanel-patterns.js");
+const sidepanelHtml = readText("sidepanel.html");
+const diagnosticsHtml = readText("diagnostics.html");
+const sidepanelCss = readText("sidepanel.css");
+const sharedText = readText("src/shared.js");
 const diagnosticsHtmlIncludesSharedFirst = () =>
   /src="src\/shared\.js"[\s\S]*src="src\/i18n\.js"[\s\S]*src="diagnostics\.js"/.test(diagnosticsHtml);
 const statusHelperStart = contentScriptText.indexOf("  function normalizeText");
@@ -287,8 +292,17 @@ assert.ok(
     contentScriptText.includes("height = Math.min(96") &&
     contentScriptText.includes("function dropHintSurfaceKind") &&
     contentScriptText.includes('if (intent === "article") return "page-dock";') &&
-    contentScriptText.includes("--xposter-drop-blue: #1d9bf0") &&
+    contentScriptText.includes("--xposter-drop-signal: #1d9bf0") &&
+    contentScriptText.includes("--xposter-drop-signal-text: #0f6cbf") &&
     contentScriptText.includes('[data-mode="markdown"][data-surface="page-dock"]::before') &&
+    contentScriptText.includes("linear-gradient(90deg, var(--xposter-drop-signal-text), var(--xposter-drop-signal) 52%, #0f7acb)") &&
+    contentScriptText.includes("color: #ffffff;") &&
+    contentScriptText.includes("__xposter_drop_text_focus") &&
+    contentScriptText.includes(".__xposter_drop_status") &&
+    contentScriptText.includes("function dropHintStatusLabel") &&
+    contentScriptText.includes("grid-template-columns: 34px minmax(0, 1fr) auto;") &&
+    contentScriptText.includes('[data-mode="markdown"][data-surface="page-dock"] strong') &&
+    contentScriptText.includes('[data-mode="markdown"][data-surface="page-dock"] p') &&
     contentScriptText.includes("__xposter_drop_rail") &&
     contentScriptText.includes("__xposter_drop_mark_hint") &&
     contentScriptText.includes('[data-mode="markdown"][data-state="ready"] .__xposter_drop_mark') &&
@@ -364,7 +378,11 @@ assert.ok(
     contentScriptText.includes("right: var(--__xposter-article-export-inline-end, 24px)") &&
     contentScriptText.includes("function articleDockInlineEnd") &&
     contentScriptText.includes("min-width: 76px") &&
-    contentScriptText.includes("opacity: 0.74") &&
+    contentScriptText.includes("--__xposter-export-paper: #ffffff") &&
+    contentScriptText.includes("border: 1px solid var(--__xposter-export-line)") &&
+    contentScriptText.includes("background: var(--__xposter-export-paper)") &&
+    contentScriptText.includes("opacity: 0.86") &&
+    !contentScriptText.includes("backdrop-filter: blur") &&
     !contentScriptText.includes('[data-xposter-article-export-host="true"]') &&
     contentScriptText.includes('const LANGUAGE_STORAGE_KEY = "xposter_language"') &&
     contentScriptText.includes("function restoreContentLanguage") &&
@@ -441,7 +459,7 @@ assert.ok(
 assert.ok(
   contentScriptText.includes("image upload(s) timed out in X") &&
     sidepanelText.includes("image upload(s) timed out in X") &&
-    sidepanelText.includes("X 上传图片等待太久"),
+    sidepanelMessagesText.includes("X 上传图片等待太久"),
   "upload timeout summaries should explain the X-side delay in the selected language"
 );
 assert.ok(
@@ -493,16 +511,18 @@ assert.ok(
     sidepanelText.includes("function syncDraftMediaAlert") &&
     sidepanelText.includes("els.draftMediaAlertDetail.__xposterSourceText = X_ARTICLE_MEDIA_LIMIT_WARNING") &&
     sidepanelText.includes('text: "Fix the image count in the editor."') &&
-    sidepanelText.includes('text: mediaEstimate.nearSoftLimit ? "Close to the image limit." : "Ready to write."') &&
+    sidepanelText.includes('if (mediaEstimate.nearSoftLimit)') &&
+    sidepanelText.includes('text: "Close to the image limit."') &&
+    sidepanelText.includes("function quietImportHint") &&
     sidepanelText.includes("function mediaUploadEstimate") &&
     sidepanelText.includes("mediaLimitWarningText") &&
     sidepanelText.includes("mediaHeadroomText") &&
     sidepanelText.includes("mediaCapacityText") &&
     sidepanelText.includes("nearSoftLimit") &&
     sidepanelText.includes('recordLiveProgressEvent("preflight-blocked"') &&
-    sidepanelText.includes("X Article media note") &&
-    sidepanelText.includes("Images: {count}/{limit}") &&
-    sidepanelText.includes("Remove {extra} image(s)") &&
+    sidepanelMessagesText.includes("X Article media note") &&
+    sidepanelMessagesText.includes("Images: {count}/{limit}") &&
+    sidepanelMessagesText.includes("Remove {extra} image(s)") &&
     !sidepanelText.includes("Image plan: {count}/20") &&
     !contentScriptText.includes("Image plan: {count}/20"),
   "draft preflight should allow up to 25 media uploads and show a centered editor warning only above that limit"
@@ -561,8 +581,8 @@ assert.ok(
     sidepanelText.includes("handleLocalAssetWriteBlocker(localAssetBlocker") &&
     sidepanelText.includes('button[data-preflight-action]') &&
     sidepanelText.includes("Choose the folder that contains their relative paths.") &&
-    sidepanelText.includes("Local image path blocked") &&
-    sidepanelText.includes("No folder connected. xPoster will ask when a draft needs local images.") &&
+    sidepanelMessagesText.includes("Local image path blocked") &&
+    sidepanelMessagesText.includes("No folder connected. xPoster will ask when a draft needs local images.") &&
     sidepanelCss.includes("grid-template-columns: 18px minmax(0, 1fr) auto;") &&
     sidepanelCss.includes(".preflight-action[hidden]"),
   "local image folder access should stay contextual: settings only shows status, preflight shows the action, and writes block before unresolved local assets start"
@@ -576,8 +596,16 @@ assert.ok(
   "X page upload progress and stop controls should stay localized in Chinese"
 );
 assert.ok(
-  sidepanelText.includes('options: importOptionsPayload()'),
-  "side panel import messages should include saved title and cover options"
+  sidepanelText.includes("function writeOptionsPayload") &&
+    sidepanelText.includes("...importOptionsPayload()") &&
+    sidepanelText.includes("forceNewArticle: Boolean(forceNewArticle)") &&
+    sidepanelText.includes("options: writeOptionsPayload({ forceNewArticle: batch })") &&
+    contentScriptText.includes("const forceNewArticle = Boolean(options.forceNewArticle)") &&
+    contentScriptText.includes('if (origin !== "paste" && (forceNewArticle || !findEditor()))') &&
+    contentScriptText.includes("await ensureEditorReadyForFileImport({ forceNew: forceNewArticle })") &&
+    contentScriptText.includes("async function ensureEditorReadyForFileImport({ forceNew = false } = {})") &&
+    contentScriptText.includes("if (!forceNew && isEditorRoute() && findEditor()) return;"),
+  "side panel writes should include saved title/cover options and batch queue writes should force each draft into a new X Article"
 );
 assert.ok(
   sidepanelHtml.includes('id="articleExportOptions"') &&
@@ -586,8 +614,9 @@ assert.ok(
     sidepanelText.includes('const STORAGE_ARTICLE_EXPORT_SETTINGS = "xposter_article_export_settings"') &&
     sidepanelText.includes("let articleExportOptions = { enabled: true, mode: \"copy\" }") &&
     sidepanelText.includes("function restoreArticleExportOptions") &&
+    sidepanelText.includes("function restoreStartupState") &&
     sidepanelText.includes("setArticleExportOptions({") &&
-    sidepanelText.includes("restoreArticleExportOptions();"),
+    sidepanelText.includes("applyArticleExportOptions(stored[STORAGE_ARTICLE_EXPORT_SETTINGS] || articleExportOptions)"),
   "settings should expose a default-on article Markdown export toggle"
 );
 assert.ok(
@@ -623,7 +652,16 @@ assert.ok(
     !sidepanelHtml.includes('class="secondary compact danger record-clear-button"') &&
     sidepanelHtml.indexOf('id="recordHistoryMeta"') < sidepanelHtml.indexOf('id="clearRecordHistory"') &&
     sidepanelHtml.indexOf('id="clearRecordHistory"') < sidepanelHtml.indexOf('id="recordHistoryList"'),
-  "record history should expose clear-all as quiet metadata action with inline confirmation beside the draft count"
+  "record history should expose clear-all inside the metadata toolbar with inline confirmation beside the draft count"
+);
+assert.ok(
+  sidepanelCss.includes(".record-search-meta") &&
+    sidepanelCss.includes("grid-template-columns: minmax(0, 1fr) auto;") &&
+    sidepanelCss.includes("#recordHistoryMeta::before") &&
+    sidepanelCss.includes(".record-clear-button") &&
+    sidepanelCss.includes("border-radius: 999px;") &&
+    sidepanelCss.includes("text-decoration: none;"),
+  "record history metadata toolbar should keep balanced two-column alignment and avoid underlined clear-all text"
 );
 assert.ok(
   sidepanelText.includes("function openRecordClearConfirm") &&
@@ -655,7 +693,11 @@ assert.ok(
     sidepanelHtml.includes('<option value="ru">Русский</option>') &&
     sidepanelText.includes("function populateLanguageSelect") &&
     sidepanelText.includes("i18n.languageOptions()") &&
-    sidepanelText.includes('"zh-TW": Object.fromEntries') &&
+    sidepanelText.includes("window.xPosterSidepanelMessages?.register?.(i18n, shared") &&
+    sidepanelMessagesText.includes("window.xPosterSidepanelMessages = { register }") &&
+    sidepanelText.includes("const sidepanelPatterns = window.xPosterSidepanelPatterns") &&
+    sidepanelPatternsText.includes("window.xPosterSidepanelPatterns") &&
+    sidepanelMessagesText.includes('"zh-TW": Object.fromEntries') &&
     sidepanelText.includes("function isChineseLanguage") &&
     sidepanelText.includes("shared.toTraditionalChinese") &&
     sharedText.includes("function toTraditionalChinese") &&
@@ -668,15 +710,15 @@ assert.ok(
 assert.ok(
   sidepanelText.includes("function buildPublishRecordSummary") &&
     sidepanelText.includes("xPoster publish record") &&
-    sidepanelText.includes("Publish summary copied.") &&
-    sidepanelText.includes("Draft saved") &&
-    sidepanelText.includes("Write result"),
+    sidepanelMessagesText.includes("Publish summary copied.") &&
+    sidepanelMessagesText.includes("Draft saved") &&
+    sidepanelMessagesText.includes("Write result"),
   "copying the saved result should produce a readable publish summary instead of internal proof JSON"
 );
 assert.ok(
   sidepanelText.includes("function showQueuedDraftAdded") &&
-    sidepanelText.includes("new draft") &&
-    sidepanelText.includes("total in queue"),
+    sidepanelMessagesText.includes("new draft") &&
+    sidepanelMessagesText.includes("total in queue"),
   "queue feedback should explicitly tell users when drafts are added"
 );
 assert.ok(
@@ -684,16 +726,40 @@ assert.ok(
     sidepanelText.includes("function formatCompactUnit") &&
     sidepanelText.includes('formatCompactUnit(record.characters, "char", "chars", "字")') &&
     sidepanelText.includes('formatCompactUnit(item.characters || 0, "char", "chars", "字符")') &&
-    sidepanelCss.includes("flex-wrap: nowrap;") &&
-    sidepanelCss.includes("min-width: max-content;"),
-  "record and queue stats should use compact counts and avoid stretching record card actions"
+    sidepanelText.includes("function queueItemMediaSummary") &&
+    sidepanelText.includes("function queueItemExcerpt") &&
+    sidepanelText.includes("function queueItemDisplayTitle") &&
+    sidepanelText.includes("function renderQueueItemMeta") &&
+    sidepanelText.includes('data-media="${safe(mediaSummary.tone)}"') &&
+    sidepanelText.includes('class="draft-queue-excerpt"') &&
+    sidepanelText.includes('class="draft-queue-fact"') &&
+    sidepanelMessagesText.includes('"Too many images: remove {extra}"') &&
+    sidepanelText.includes("media.tone === \"danger\"") &&
+    sidepanelText.includes("formatCompactCount(total, { zhTenThousand: false })") &&
+    sidepanelText.includes("draft-queue-copy") &&
+    !sidepanelText.includes('class="record-icon-action draft-queue-edit"') &&
+    !sidepanelText.includes('class="draft-queue-source"') &&
+    !sidepanelText.includes('"Source: {name}"') &&
+    !sidepanelText.includes('"No images":') &&
+    !sidepanelText.includes('"Near image limit"') &&
+    sidepanelCss.includes(".draft-queue-excerpt") &&
+    sidepanelCss.includes("grid-template-rows: auto auto auto;") &&
+    sidepanelCss.includes("min-height: 72px;") &&
+    !sidepanelCss.includes(".draft-queue-source") &&
+    !sidepanelCss.includes(".draft-queue-actions {\n    grid-column: 1 / -1;") &&
+    sidepanelCss.includes(".draft-queue-item:hover") &&
+    sidepanelCss.includes(".draft-queue-item:focus-within") &&
+    sidepanelCss.includes('.draft-queue-item[data-media="danger"]') &&
+    !sidepanelCss.includes('.draft-queue-fact[data-tone="warn"]') &&
+    sidepanelCss.includes(".draft-queue-index"),
+  "record and queue stats should use compact counts, queue items should warn only for over-limit media, and hover/focus should show clear item affordance"
 );
 assert.ok(
-  sidepanelText.includes('if (counts.image) parts.push(formatCompactUnit(counts.image, "image", "images", "图"))') &&
+    sidepanelText.includes('if (counts.image) parts.push(formatCompactUnit(counts.image, "image", "images", "图"))') &&
     sidepanelText.includes('if (counts.table) parts.push(formatCompactUnit(counts.table, "table", "tables", "表"))') &&
     sidepanelText.includes('formatCompactUnit(length, "char", "chars", "字符")') &&
     sidepanelText.includes("Web images: ${remoteCount}") &&
-    sidepanelText.includes("Images: ${imageCount}") &&
+    !sidepanelText.includes("Images: ${imageCount}") &&
     !sidepanelText.includes("Unreachable images stay as links.") &&
     !sidepanelText.includes("draftTargetStateText") &&
     !sidepanelText.includes("function draftEditorModeLabel") &&
@@ -753,6 +819,8 @@ assert.ok(
 assert.ok(
   includesAll(sidepanelHtml, [
     "vendor/minigfm.min.js",
+    "src/sidepanel-messages.js",
+    "src/sidepanel-patterns.js",
     'id="draftEditorToolbar"',
     'id="draftEditorStatus"',
     'id="draftEditorModeToggle"',
@@ -783,6 +851,9 @@ assert.ok(
       "function sanitizePreviewHtml",
       "const schemeMatch = raw.match",
       "return /^(https?|mailto|tel|ftp)$/i.test(schemeMatch[1]) ? raw : \"\";",
+      "function markdownSegmentCounts",
+      "function editorStatsText",
+      "function updateEditorModeToggle",
       "button.disabled = !isEdit || queueModeActive()",
       "function setDraftText(markdown",
       "parseStatus = true",
@@ -795,13 +866,16 @@ assert.ok(
       "function updateDraftEditorModeToggle",
       "function updateDraftEditorDensity",
       "function plainDraftSyntaxText",
+      "function renderMarkdownSyntaxHighlight",
       "function renderDraftSyntaxHighlight",
       "SYNTAX_HIGHLIGHT_DETAIL_LIMIT",
-      "els.draftSyntaxHighlight.textContent = value;",
+      "target.textContent = value;",
       "function highlightInlineMarkdownSyntax",
       "function syncDraftSyntaxScroll",
       'els.markdown.addEventListener("scroll", syncDraftSyntaxScroll)',
-      "counts = shared.segmentCounts(parseDraftMarkdown(text).segments)",
+      "const counts = parse ? markdownSegmentCounts(text, latestCounts || shared.segmentCounts([])) : shared.segmentCounts([]);",
+      "editorStatsText(text, counts)",
+      "editorStatsText(text, markdownSegmentCounts(text))",
       "function translateVisibleWorkspace()",
       "translateVisibleWorkspace();",
       "translateDynamicDom(panel)",
@@ -811,8 +885,13 @@ assert.ok(
       "els.draftEditorShell.hidden = hasQueue",
       'els.draftEditorShell.dataset.density = isCompact ? "compact" : "roomy";',
       "function runWhenIdle(callback, timeout = STARTUP_IDLE_TIMEOUT_MS)",
-      "function restoreSingleDraftMarkdown(markdown)",
-      "setDraftText(text, { preview: false, parseStatus: false });",
+      "function restoreSingleDraftMarkdown(markdown, { analyze = true } = {})",
+      "setDraftText(text, { preview: false, parseStatus: false, syntax: \"defer\" });",
+      "function scheduleDraftSyntaxHighlight",
+      "function paintStartupShell",
+      "function restoreStartupState",
+      "function startupStorage",
+      "STARTUP_STORAGE_KEYS",
       "scheduleAnalyzeDraft(STARTUP_DRAFT_ANALYZE_DELAY_MS);",
       "function ensureRecordHistoryRestored({ render = false } = {})",
       "function scheduleRecordHistoryRestore()",
@@ -826,6 +905,9 @@ assert.ok(
       "void ensureRecordHistoryRestored({ render: true }).then(() =>",
       "syncRecordPanel({ translate: true });",
       "function updateInlinePreview",
+      "function updateRecordEditorMode",
+      "function updateRecordEditPreview",
+      "function handleRecordEditorInput",
       "function applyTextareaCommand",
       "return importMarkdownDraft(draftText())",
       "els.draftEditorModeToggle?.addEventListener"
@@ -894,9 +976,14 @@ assert.ok(
   "side panel should use a lightweight native textarea editor with MiniGFM read preview, one status-bar mode toggle, responsive controls, and adapter-based draft reads"
 );
 assert.ok(
-  sidepanelText.includes('"Ready to write.": "可以写入。"') &&
-    sidepanelText.includes("const isCompact = !value.trim() || (value.length < 420 && meaningfulLines <= 8 && !hasRichBlocks);"),
-  "short or empty drafts should stay compact and ready-state copy should be localized"
+  sidepanelText.includes("const isCompact = !value.trim() || (value.length < 420 && meaningfulLines <= 8 && !hasRichBlocks);") &&
+    sidepanelHtml.includes('id="importHint" data-tone="ready" aria-hidden="true" hidden') &&
+    sidepanelCss.includes(".import-hint[hidden]") &&
+    sidepanelText.includes('return { hidden: true, tone: "ready", text: "" };') &&
+    sidepanelText.includes("applyImportHint(hint)") &&
+    sidepanelText.includes("els.importHint.hidden = hidden") &&
+    sidepanelText.includes('els.importHint.setAttribute("aria-hidden", hidden ? "true" : "false")'),
+  "short or empty drafts should stay compact and routine write readiness should not add a redundant button hint"
 );
 assert.ok(
   sidepanelHtml.includes('id="draftDropTarget"') &&
@@ -904,13 +991,14 @@ assert.ok(
   "side panel should expose a stable content-area Markdown drop target"
 );
 assert.ok(
-  sidepanelCss.includes(".draft-drop-target") &&
+    sidepanelCss.includes(".draft-drop-target") &&
     sidepanelCss.includes(".composer.drag-active .draft-drop-target") &&
     sidepanelCss.includes("xposter-queue-item-enter") &&
-    sidepanelCss.includes(".draft-queue-item[data-status=\"writing\"] .draft-queue-state::before") &&
+    sidepanelCss.includes(".draft-queue-item[data-status=\"writing\"] .draft-queue-index") &&
     sidepanelText.includes("function markQueueItemsEntered") &&
     sidepanelText.includes('els.targetReady.textContent = localizeText(target)') &&
-    sidepanelText.includes('return localizeText("Preparing Markdown, images, and the X editor.")') &&
+    sidepanelMessagesText.includes("Preparing Markdown, images, and the X editor.") &&
+    sidepanelPatternsText.includes("Article written(?: in (.+))?") &&
     !sidepanelCss.includes(".composer.drag-active::before") &&
     !sidepanelCss.includes(".composer.drag-active::after"),
   "drag, queue, and readiness feedback should use real elements with restrained localized motion instead of fragile pseudo-elements"
@@ -924,9 +1012,28 @@ assert.ok(
   sidepanelCss.includes("padding-right: max(14px, env(safe-area-inset-right));") &&
     sidepanelCss.includes("padding-left: max(14px, env(safe-area-inset-left));") &&
     sidepanelCss.includes(".record-edit-dialog textarea") &&
-    sidepanelCss.includes("padding: 15px 16px;") &&
+    sidepanelCss.includes(".record-edit-toolbar") &&
+    sidepanelCss.includes(".record-edit-highlight") &&
+    sidepanelCss.includes(".record-edit-preview") &&
+    sidepanelCss.includes("list-style-position: outside;") &&
+    sidepanelCss.includes("padding-inline-start: 1.35em;") &&
+    sidepanelCss.includes(".record-edit-actions") &&
+    sidepanelCss.includes("grid-template-columns: minmax(0, 1fr) auto auto;") &&
+    sidepanelCss.includes(".record-edit-action-group") &&
+    sidepanelCss.includes("grid-template-columns: 36px minmax(0, 1fr) minmax(0, 1fr);") &&
+    sidepanelHtml.includes('id="recordEditToolbar"') &&
+    sidepanelHtml.includes('id="recordEditHighlight"') &&
+    sidepanelHtml.includes('id="recordEditPreview"') &&
+    sidepanelHtml.includes('id="recordEditModeToggle"') &&
+    sidepanelHtml.includes('id="recordEditStats"') &&
+    sidepanelHtml.includes('data-record-action="editor-command"') &&
+    sidepanelText.includes("els.recordEditTextarea?.addEventListener(\"input\", handleRecordEditorInput)") &&
+    sidepanelText.includes("els.recordEditTextarea?.addEventListener(\"scroll\", syncRecordEditSyntaxScroll)") &&
+    sidepanelText.includes("function normalizePreviewLists") &&
+    sidepanelText.includes("stripOrderedPreviewListMarker(item)") &&
+    sidepanelText.includes("applyTextareaCommand(button.dataset.editorCommand") &&
     !sidepanelCss.includes(".record-edit-sheet {\n    padding: 0;"),
-  "record edit dialog should keep side breathing room and comfortable textarea padding on narrow screens"
+  "record edit dialog should reuse Markdown syntax highlighting, formatting, preview, and a single stable action bar"
 );
 assert.ok(
   sidepanelHtml.includes('id="confettiOption"') &&
@@ -954,7 +1061,7 @@ assert.ok(
 );
 assert.ok(
   sidepanelText.includes("scheduleRunSummaryCollapse(summary)") &&
-    sidepanelText.includes('setLocalizedText(els.importHint, "Written. Review in X.")'),
+    sidepanelText.includes('applyImportHint({ tone: "done", text: "Written. Review in X." })'),
   "clean successful imports should collapse bulky summary UI into a compact status hint"
 );
 assert.ok(
@@ -976,10 +1083,16 @@ assert.ok(
     includesAll(contentScriptText, [
       'const SUCCESS_CELEBRATION_ID = "__xposter_success_celebration__"',
       'const SUCCESS_CELEBRATION_STYLE_ID = "__xposter_success_celebration_style__"',
+      "const SUCCESS_CELEBRATION_DURATION_MS = 3200",
+      "const SUCCESS_CELEBRATION_PIECE_COUNT = 72",
       "function injectSuccessCelebrationStyle",
       "function showSuccessCelebration",
       "prefersReducedMotion()",
       "position: fixed;",
+      "width: 100vw;",
+      "height: 100dvh;",
+      "animation: __xposter_success_piece 2600ms",
+      "window.setTimeout(() => root.remove(), SUCCESS_CELEBRATION_DURATION_MS)",
       ".__xposter_success_mark",
       ".__xposter_success_piece",
       "prefers-reduced-motion: reduce",
@@ -1030,7 +1143,6 @@ assert.ok(
   "frontmatter-only cover placeholder should not add visible Markdown image text"
 );
 
-const readText = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
 const readme = readText("README.md");
 const readmeZh = readText("README.zh-CN.md");
 const usageZh = readText("docs/usage.zh-CN.md");

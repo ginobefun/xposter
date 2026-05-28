@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>xPoster</title>
     <link rel="stylesheet" href="sidepanel.css" />
+    <script src="src/i18n.js" defer></script>
+    <script src="src/shared.js" defer></script>
+    <script src="src/sidepanel-messages.js" defer></script>
+    <script src="src/sidepanel-patterns.js" defer></script>
+    <script src="vendor/minigfm.min.js" defer></script>
+    <script src="sidepanel.js" defer></script>
   </head>
   <body>
     <main class="shell">
@@ -91,7 +97,7 @@
           <div class="draft-queue-head">
             <div>
               <strong data-i18n="Pending drafts">Pending drafts</strong>
-              <span id="draftQueueMeta" data-i18n="Click a draft to edit.">Click a draft to edit.</span>
+              <span id="draftQueueMeta">0 drafts</span>
             </div>
           </div>
           <ol class="draft-queue-list" id="draftQueueList"></ol>
@@ -104,7 +110,7 @@
               <span data-i18n="Write to X draft">Write to X draft</span>
             </button>
           </div>
-          <p class="import-hint" id="importHint" data-tone="warn" data-i18n="Add Markdown first">Add Markdown first</p>
+          <p class="import-hint" id="importHint" data-tone="ready" aria-hidden="true" hidden></p>
           <section class="inline-write-status" id="liveProgress" aria-label="Article writing progress" data-tone="idle" hidden>
             <div>
               <strong id="liveProgressTitle">Nothing is running</strong>
@@ -935,27 +941,51 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.4 5 5.6 5.6L17.6 5 19 6.4 13.4 12l5.6 5.6-1.4 1.4-5.6-5.6L6.4 19 5 17.6l5.6-5.6L5 6.4 6.4 5Z"/></svg>
           </button>
         </header>
-        <textarea id="recordEditTextarea" spellcheck="false"></textarea>
+        <div class="record-edit-toolbar" id="recordEditToolbar" aria-label="Markdown editor tools" data-i18n-aria-label="Markdown editor tools">
+          <div class="draft-editor-formatting" role="group" aria-label="Markdown formatting" data-i18n-aria-label="Markdown formatting">
+            <button type="button" data-record-action="editor-command" data-editor-command="bold" title="Bold" aria-label="Bold" data-i18n-title="Bold" data-i18n-aria-label="Bold">B</button>
+            <button type="button" data-record-action="editor-command" data-editor-command="italic" title="Italic" aria-label="Italic" data-i18n-title="Italic" data-i18n-aria-label="Italic"><span>I</span></button>
+            <button type="button" data-record-action="editor-command" data-editor-command="heading" title="Heading" aria-label="Heading" data-i18n-title="Heading" data-i18n-aria-label="Heading">#</button>
+            <button type="button" data-record-action="editor-command" data-editor-command="code" title="Code" aria-label="Code" data-i18n-title="Code" data-i18n-aria-label="Code">`</button>
+            <button type="button" data-record-action="editor-command" data-editor-command="link" title="Link" aria-label="Link" data-i18n-title="Link" data-i18n-aria-label="Link"><svg class="editor-command-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1L11 5"/><path d="M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1"/></svg></button>
+            <button type="button" data-record-action="editor-command" data-editor-command="image" title="Image" aria-label="Image" data-i18n-title="Image" data-i18n-aria-label="Image"><svg class="editor-command-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="m8 15 3-3 2 2 3-4 4 5"/><path d="M8.5 9h.01"/></svg></button>
+            <button type="button" data-record-action="editor-command" data-editor-command="table" title="Table" aria-label="Table" data-i18n-title="Table" data-i18n-aria-label="Table"><svg class="editor-command-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="1"/><path d="M4 10h16"/><path d="M4 15h16"/><path d="M10 5v14"/><path d="M16 5v14"/></svg></button>
+          </div>
+        </div>
+        <div class="record-edit-body" id="recordEditBody" data-mode="edit">
+          <div class="record-edit-input-wrap" id="recordEditInputWrap">
+            <pre class="draft-syntax-highlight record-edit-highlight" id="recordEditHighlight" aria-hidden="true"></pre>
+            <textarea id="recordEditTextarea" spellcheck="false"></textarea>
+          </div>
+          <div class="draft-inline-preview record-edit-preview" id="recordEditPreview" aria-label="Markdown preview" data-i18n-aria-label="Markdown preview" hidden>
+            <div class="draft-inline-preview-body" id="recordEditPreviewBody">
+              <p class="empty">Preview appears here.</p>
+            </div>
+          </div>
+        </div>
         <div class="record-edit-actions">
-          <button class="secondary compact" type="button" data-record-action="copy-edited" title="Copy text" aria-label="Copy text" data-i18n-title="Copy text" data-i18n-aria-label="Copy text">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7h10v13H8V7Zm2 2v9h6V9h-6ZM5 4h10v2H7v10H5V4Z"/></svg>
-            <span data-i18n="Copy text">Copy text</span>
+          <span class="record-edit-stats" id="recordEditStats">0 chars</span>
+          <button class="draft-editor-mode-toggle record-edit-mode-toggle" id="recordEditModeToggle" type="button" data-record-action="toggle-preview" aria-label="Read" title="Read">
+            <svg class="draft-mode-icon draft-mode-icon-read" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.2c4.4 0 7.6 3.3 9.1 6.8-1.5 3.5-4.7 6.8-9.1 6.8S4.4 15.5 2.9 12C4.4 8.5 7.6 5.2 12 5.2Zm0 2C8.7 7.2 6.2 9.4 5.1 12c1.1 2.6 3.6 4.8 6.9 4.8s5.8-2.2 6.9-4.8C17.8 9.4 15.3 7.2 12 7.2Zm0 1.8a3 3 0 1 1 0 6 3 3 0 0 1 0-6Zm0 2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg>
+            <svg class="draft-mode-icon draft-mode-icon-write" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.8 4.2a2.9 2.9 0 0 1 4.1 4.1L9.7 18.5 5 19l.5-4.7L15.8 4.2Zm1.4 1.4L7.4 15.4l-.2 1.4 1.4-.2 9.8-9.8a.9.9 0 0 0-1.2-1.2Z"/></svg>
+            <span data-mode-label="read" data-i18n="Read">Read</span>
+            <span data-mode-label="write" data-i18n="Write">Write</span>
           </button>
-          <button class="secondary compact" id="recordEditWriteButton" type="button" data-record-action="write-edited" hidden>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v3H4V4Zm0 5h10v3H4V9Zm0 5h8v3H4v-3Zm13.5-.7V9h2v4.3l1.6-1.6 1.4 1.4-3.5 3.5-3.5-3.5 1.4-1.4 1.6 1.6ZM17 18h5v2h-5v-2Z"/></svg>
-            <span data-i18n="Write this draft">Write this draft</span>
-          </button>
-          <button class="primary compact" type="button" data-record-action="use-edited">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v2H5V4Zm0 4h8v2H5V8Zm0 4h7v2H5v-2Zm11 1V8h2v5h3l-4 4-4-4h3Zm-3 6h8v2h-8v-2Z"/></svg>
-            <span id="recordEditPrimaryLabel" data-i18n="Use draft">Use draft</span>
-          </button>
+          <div class="record-edit-action-group">
+            <button class="record-icon-action record-edit-copy" type="button" data-record-action="copy-edited" title="Copy text" aria-label="Copy text" data-i18n-title="Copy text" data-i18n-aria-label="Copy text">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7h10v13H8V7Zm2 2v9h6V9h-6ZM5 4h10v2H7v10H5V4Z"/></svg>
+            </button>
+            <button class="secondary compact" type="button" data-record-action="use-edited">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v2H5V4Zm0 4h8v2H5V8Zm0 4h7v2H5v-2Zm11 1V8h2v5h3l-4 4-4-4h3Zm-3 6h8v2h-8v-2Z"/></svg>
+              <span id="recordEditPrimaryLabel" data-i18n="Save">Save</span>
+            </button>
+            <button class="primary compact" id="recordEditWriteButton" type="button" data-record-action="write-edited" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v3H4V4Zm0 5h10v3H4V9Zm0 5h8v3H4v-3Zm13.5-.7V9h2v4.3l1.6-1.6 1.4 1.4-3.5 3.5-3.5-3.5 1.4-1.4 1.6 1.6ZM17 18h5v2h-5v-2Z"/></svg>
+              <span data-i18n="Write this draft">Write this draft</span>
+            </button>
+          </div>
         </div>
       </section>
     </div>
-
-    <script src="src/i18n.js"></script>
-    <script src="src/shared.js"></script>
-    <script src="vendor/minigfm.min.js"></script>
-    <script src="sidepanel.js"></script>
   </body>
 </html>

@@ -4,6 +4,23 @@ const path = require("node:path");
 const root = path.resolve(__dirname, "..");
 const readJson = (relativePath) => JSON.parse(fs.readFileSync(path.join(root, relativePath), "utf8"));
 const readText = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
+const SIDEPANEL_RUNTIME_FILES = [
+  "src/sidepanel-messages.js",
+  "src/sidepanel-patterns.js",
+  "sidepanel.js"
+];
+const SIDEPANEL_SCRIPT_ORDER = [
+  "src/i18n.js",
+  "src/shared.js",
+  "src/sidepanel-messages.js",
+  "src/sidepanel-patterns.js",
+  "sidepanel.js"
+];
+const DIAGNOSTICS_SCRIPT_ORDER = [
+  "src/shared.js",
+  "src/i18n.js",
+  "diagnostics.js"
+];
 
 function fail(message) {
   console.error(`i18n check failed: ${message}`);
@@ -31,6 +48,22 @@ function messageKeys(locale) {
   return new Set(Object.keys(readJson(`_locales/${locale}/messages.json`)));
 }
 
+function assertScriptOrder(html, scripts, label) {
+  let cursor = -1;
+  for (const script of scripts) {
+    const index = html.indexOf(`src="${script}"`);
+    if (index === -1) {
+      fail(`${label} must load ${script}`);
+      return;
+    }
+    if (index <= cursor) {
+      fail(`${label} must load ${scripts.join(", ")} in order`);
+      return;
+    }
+    cursor = index;
+  }
+}
+
 const localeDirs = fs
   .readdirSync(path.join(root, "_locales"), { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
@@ -55,7 +88,8 @@ for (const [, key] of manifestText.matchAll(/__MSG_([A-Za-z0-9_]+)__/g)) {
   if (!enLocaleKeys.has(key)) fail(`manifest references missing locale message "${key}"`);
 }
 
-const runtimeText = `${readText("sidepanel.js")}\n${readText("diagnostics.js")}`;
+const sidepanelRuntimeText = SIDEPANEL_RUNTIME_FILES.map(readText).join("\n");
+const runtimeText = `${sidepanelRuntimeText}\n${readText("diagnostics.js")}`;
 const i18nText = readText("src/i18n.js");
 const runtimeKeys = new Set();
 for (const [, key] of runtimeText.matchAll(/"([^"\n]+)"\s*:\s*"[^"]*"/g)) {
@@ -66,7 +100,9 @@ for (const [, key] of runtimeText.matchAll(/^\s*([A-Za-z][A-Za-z0-9_ ]*)\s*:\s*"
 }
 for (const key of enLocaleKeys) runtimeKeys.add(key);
 
-const htmlText = `${readText("sidepanel.html")}\n${readText("diagnostics.html")}`;
+const sidepanelHtml = readText("sidepanel.html");
+const diagnosticsHtml = readText("diagnostics.html");
+const htmlText = `${sidepanelHtml}\n${diagnosticsHtml}`;
 const htmlI18nKeys = new Set();
 for (const [, rawKey] of htmlText.matchAll(/\bdata-i18n(?:-[a-z-]+)?="([^"]+)"/g)) {
   htmlI18nKeys.add(decodeHtmlAttribute(rawKey));
@@ -76,15 +112,8 @@ for (const key of htmlI18nKeys) {
   if (!runtimeKeys.has(key)) fail(`HTML references missing runtime i18n key "${key.replace(/\n/g, "\\n")}"`);
 }
 
-if (!/src="src\/i18n\.js"[\s\S]*src="sidepanel\.js"/.test(readText("sidepanel.html"))) {
-  fail("sidepanel.html must load src/i18n.js before sidepanel.js");
-}
-if (!/src="src\/i18n\.js"[\s\S]*src="diagnostics\.js"/.test(readText("diagnostics.html"))) {
-  fail("diagnostics.html must load src/i18n.js before diagnostics.js");
-}
-if (!/src="src\/shared\.js"[\s\S]*src="src\/i18n\.js"[\s\S]*src="diagnostics\.js"/.test(readText("diagnostics.html"))) {
-  fail("diagnostics.html must load src/shared.js before src/i18n.js and diagnostics.js");
-}
+assertScriptOrder(sidepanelHtml, SIDEPANEL_SCRIPT_ORDER, "sidepanel.html");
+assertScriptOrder(diagnosticsHtml, DIAGNOSTICS_SCRIPT_ORDER, "diagnostics.html");
 
 for (const language of ["zh-TW", "ja", "fr", "ru"]) {
   if (!i18nText.includes(`code: "${language}"`)) {
