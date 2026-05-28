@@ -914,6 +914,10 @@ assert.ok(
       "function updateRecordEditorMode",
       "function updateRecordEditPreview",
       "function handleRecordEditorInput",
+      "function handleTextareaUndoShortcut",
+      "function syncProgrammaticUndoFallback",
+      "function clearProgrammaticHistoryOnTextInput",
+      "const EDITOR_HISTORY_LIMIT = 40",
       "function applyTextareaCommand",
       "return importMarkdownDraft(draftText())",
       "els.draftEditorModeToggle?.addEventListener"
@@ -1037,6 +1041,8 @@ assert.ok(
     sidepanelHtml.includes('data-record-action="editor-command"') &&
     sidepanelText.includes("els.recordEditTextarea?.addEventListener(\"input\", handleRecordEditorInput)") &&
     sidepanelText.includes("els.recordEditTextarea?.addEventListener(\"scroll\", syncRecordEditSyntaxScroll)") &&
+    sidepanelText.includes("els.recordEditTextarea?.addEventListener(\"keydown\"") &&
+    sidepanelText.includes("els.markdown.addEventListener(\"keydown\"") &&
     sidepanelText.includes("function normalizePreviewLists") &&
     sidepanelText.includes("stripOrderedPreviewListMarker(item)") &&
     sidepanelText.includes("applyTextareaCommand(button.dataset.editorCommand") &&

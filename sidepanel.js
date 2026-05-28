@@ -182,6 +182,7 @@
   const MARKDOWN_LOAD_ERROR_DETAIL = "Try a .md, .markdown, .txt file, or plain Markdown text.";
   const NO_NEW_DRAFTS_DETAIL = "No new Markdown drafts were added.";
   const DRAFT_EDITOR_MODES = new Set(["edit", "read"]);
+  const EDITOR_HISTORY_LIMIT = 40;
   const DRAFT_SAVE_DELAY_MS = 220;
   const DRAFT_ANALYZE_DELAY_MS = 140;
   const RECORD_SEARCH_DELAY_MS = 120;
@@ -276,6 +277,8 @@
   let lastSuccessFeedbackKey = "";
   let draftEditorMode = "edit";
   let recordEditMode = "edit";
+  let draftEditorHistory = createEditorHistory();
+  let recordEditorHistory = createEditorHistory();
   let miniGfmRenderer = null;
   let runSummaryCollapseTimer = null;
   let draftDropStatusTimer = null;
@@ -672,6 +675,7 @@
   function setDraftText(markdown, { preview = true, parseStatus = true, syntax = "now" } = {}) {
     const text = String(markdown || "");
     if (els.markdown && els.markdown.value !== text) els.markdown.value = text;
+    resetEditorHistory(els.markdown);
     if (syntax === "defer") scheduleDraftSyntaxHighlight(text);
     else if (syntax === "none") cancelDeferredDraftSyntaxHighlight();
     else renderDraftSyntaxHighlight(text);
@@ -686,7 +690,9 @@
     els.markdown?.focus?.();
   }
 
-  function handleDraftEditorInput({ pasted = false } = {}) {
+  function handleDraftEditorInput({ pasted = false, event = null } = {}) {
+    syncProgrammaticUndoFallback(event, els.markdown);
+    clearProgrammaticHistoryOnTextInput(event, els.markdown);
     renderDraftSyntaxHighlight();
     updateDraftEditorDensity();
     updateDraftEditorStatus();
@@ -724,8 +730,128 @@
     };
   }
 
+  function createEditorHistory() {
+    return {
+      undo: [],
+      redo: [],
+      pending: null,
+      pendingTimer: null
+    };
+  }
+
+  function editorHistoryForTextarea(textarea) {
+    return textarea === els.recordEditTextarea ? recordEditorHistory : draftEditorHistory;
+  }
+
+  function resetEditorHistory(textarea) {
+    const previous = editorHistoryForTextarea(textarea);
+    if (previous?.pendingTimer) window.clearTimeout(previous.pendingTimer);
+    if (textarea === els.recordEditTextarea) recordEditorHistory = createEditorHistory();
+    else draftEditorHistory = createEditorHistory();
+  }
+
+  function editorSnapshot(textarea) {
+    const selection = textareaSelection(textarea);
+    return {
+      value: textarea?.value || "",
+      start: selection.start,
+      end: selection.end
+    };
+  }
+
+  function editorSnapshotsEqual(left, right) {
+    return Boolean(left && right) &&
+      left.value === right.value &&
+      left.start === right.start &&
+      left.end === right.end;
+  }
+
+  function pushEditorUndoSnapshot(textarea, snapshot = editorSnapshot(textarea)) {
+    if (!textarea) return;
+    const history = editorHistoryForTextarea(textarea);
+    if (editorSnapshotsEqual(history.undo[history.undo.length - 1], snapshot)) return;
+    history.undo.push(snapshot);
+    if (history.undo.length > EDITOR_HISTORY_LIMIT) history.undo.shift();
+    history.redo = [];
+  }
+
+  function restoreEditorSnapshot(textarea, snapshot, onChange) {
+    if (!textarea || !snapshot) return false;
+    textarea.value = snapshot.value;
+    const end = textarea.value.length;
+    textarea.setSelectionRange(Math.min(snapshot.start, end), Math.min(snapshot.end, end));
+    textarea.focus();
+    onChange?.();
+    return true;
+  }
+
+  function handleTextareaUndoShortcut(event, { textarea = event.target, onChange = handleDraftEditorInput } = {}) {
+    if (!textarea || event.defaultPrevented) return false;
+    if (!(event.metaKey || event.ctrlKey) || event.altKey) return false;
+    const key = String(event.key || "").toLowerCase();
+    const wantsUndo = key === "z" && !event.shiftKey;
+    const wantsRedo = key === "y" || (key === "z" && event.shiftKey);
+    if (!wantsUndo && !wantsRedo) return false;
+    const history = editorHistoryForTextarea(textarea);
+    const action = wantsRedo ? "redo" : "undo";
+    const stack = action === "redo" ? history.redo : history.undo;
+    if (!stack.length) return false;
+    const before = editorSnapshot(textarea);
+    if (history.pendingTimer) window.clearTimeout(history.pendingTimer);
+    history.pending = { action, before };
+    history.pendingTimer = window.setTimeout(() => {
+      history.pendingTimer = null;
+      if (!history.pending || history.pending.action !== action) return;
+      if (!editorSnapshotsEqual(editorSnapshot(textarea), before)) {
+        history.pending = null;
+        return;
+      }
+      const activeStack = action === "redo" ? history.redo : history.undo;
+      const next = activeStack.pop();
+      if (!next) return;
+      if (action === "redo") history.undo.push(before);
+      else history.redo.push(before);
+      restoreEditorSnapshot(textarea, next, onChange);
+      history.pending = null;
+    }, 80);
+    return false;
+  }
+
+  function syncProgrammaticUndoFallback(event, textarea) {
+    const action = event?.inputType === "historyRedo" ? "redo" : event?.inputType === "historyUndo" ? "undo" : "";
+    if (!textarea || !action) return;
+    const history = editorHistoryForTextarea(textarea);
+    const pending = history.pending?.action === action ? history.pending : null;
+    const stack = action === "redo" ? history.redo : history.undo;
+    const current = editorSnapshot(textarea);
+    const expected = stack[stack.length - 1];
+    if (expected?.value === current.value) {
+      stack.pop();
+      if (pending?.before && !editorSnapshotsEqual(pending.before, current)) {
+        if (action === "redo") history.undo.push(pending.before);
+        else history.redo.push(pending.before);
+      }
+    }
+    if (pending) {
+      if (history.pendingTimer) window.clearTimeout(history.pendingTimer);
+      history.pendingTimer = null;
+      history.pending = null;
+    }
+  }
+
+  function clearProgrammaticHistoryOnTextInput(event, textarea) {
+    if (!textarea || !event?.inputType || event.inputType === "historyUndo" || event.inputType === "historyRedo") return;
+    const history = editorHistoryForTextarea(textarea);
+    history.undo = [];
+    history.redo = [];
+    if (history.pendingTimer) window.clearTimeout(history.pendingTimer);
+    history.pendingTimer = null;
+    history.pending = null;
+  }
+
   function replaceTextareaSelection(text, selectStart = 0, selectEnd = text.length, { textarea = els.markdown, onChange = handleDraftEditorInput } = {}) {
     if (!textarea) return;
+    pushEditorUndoSnapshot(textarea);
     const { start, end } = textareaSelection(textarea);
     textarea.setRangeText(text, start, end, "end");
     textarea.focus();
@@ -740,6 +866,7 @@
 
   function insertAtCurrentLine(prefix, { textarea = els.markdown, onChange = handleDraftEditorInput } = {}) {
     if (!textarea) return;
+    pushEditorUndoSnapshot(textarea);
     const position = Math.max(0, textarea.selectionStart || 0);
     const lineStart = textarea.value.lastIndexOf("\n", position - 1) + 1;
     textarea.setRangeText(prefix, lineStart, lineStart, "end");
@@ -2422,7 +2549,9 @@
     if (recordEditMode === "read") updateRecordEditPreview();
   }
 
-  function handleRecordEditorInput() {
+  function handleRecordEditorInput(event = null) {
+    syncProgrammaticUndoFallback(event, els.recordEditTextarea);
+    clearProgrammaticHistoryOnTextInput(event, els.recordEditTextarea);
     updateRecordEditorChrome();
   }
 
@@ -2439,6 +2568,7 @@
     els.recordEditTextarea.dataset.recordId = mode === "record" ? id : "";
     els.recordEditTextarea.dataset.queueId = mode === "queue" || mode === "new" ? id : "";
     els.recordEditTextarea.value = value;
+    resetEditorHistory(els.recordEditTextarea);
     if (els.recordEditWriteButton) els.recordEditWriteButton.hidden = mode !== "queue";
     updateRecordEditorMode("edit");
     updateRecordEditorChrome();
@@ -6583,6 +6713,7 @@
   function closeMarkdownEditor() {
     activeRecordEditorId = null;
     activeDraftEditor = null;
+    resetEditorHistory(els.recordEditTextarea);
     if (els.recordEditTextarea) {
       els.recordEditTextarea.value = "";
       els.recordEditTextarea.dataset.editorMode = "";
@@ -7071,7 +7202,10 @@
     handleExtensionEvent({ type: "xposter:event", event: event.detail?.event, payload: event.detail?.payload || {} });
   });
 
-  els.markdown.addEventListener("input", () => handleDraftEditorInput());
+  els.markdown.addEventListener("keydown", (event) => {
+    handleTextareaUndoShortcut(event, { textarea: els.markdown, onChange: handleDraftEditorInput });
+  });
+  els.markdown.addEventListener("input", (event) => handleDraftEditorInput({ event }));
   els.markdown.addEventListener("paste", () => handleDraftEditorInput({ pasted: true }));
   els.markdown.addEventListener("scroll", syncDraftSyntaxScroll);
   els.draftEditorToolbar?.addEventListener("click", (event) => {
@@ -7121,6 +7255,9 @@
     if (event.target === els.recordEditSheet) closeMarkdownEditor();
   });
   els.recordEditSheet?.addEventListener("click", handleMarkdownEditorClick);
+  els.recordEditTextarea?.addEventListener("keydown", (event) => {
+    handleTextareaUndoShortcut(event, { textarea: els.recordEditTextarea, onChange: handleRecordEditorInput });
+  });
   els.recordEditTextarea?.addEventListener("input", handleRecordEditorInput);
   els.recordEditTextarea?.addEventListener("scroll", syncRecordEditSyntaxScroll);
   els.recordEditSheet?.addEventListener("keydown", (event) => {
