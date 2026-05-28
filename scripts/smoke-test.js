@@ -737,12 +737,18 @@ assert.ok(
     sidepanelText.includes("media.tone === \"danger\"") &&
     sidepanelText.includes("formatCompactCount(total, { zhTenThousand: false })") &&
     sidepanelText.includes("draft-queue-copy") &&
+    sidepanelText.includes("draft-queue-remove") &&
+    sidepanelText.includes("function removeDraftQueueItem") &&
+    sidepanelText.includes('data-queue-action="remove"') &&
+    sidepanelMessagesText.includes('"Remove draft"') &&
+    sidepanelMessagesText.includes('"Queued draft removed."') &&
     !sidepanelText.includes('class="record-icon-action draft-queue-edit"') &&
     !sidepanelText.includes('class="draft-queue-source"') &&
     !sidepanelText.includes('"Source: {name}"') &&
     !sidepanelText.includes('"No images":') &&
     !sidepanelText.includes('"Near image limit"') &&
     sidepanelCss.includes(".draft-queue-excerpt") &&
+    sidepanelCss.includes(".draft-queue-remove") &&
     sidepanelCss.includes("grid-template-rows: auto auto auto;") &&
     sidepanelCss.includes("min-height: 72px;") &&
     !sidepanelCss.includes(".draft-queue-source") &&
@@ -993,6 +999,8 @@ assert.ok(
 assert.ok(
     sidepanelCss.includes(".draft-drop-target") &&
     sidepanelCss.includes(".composer.drag-active .draft-drop-target") &&
+    sidepanelCss.includes(".composer.drag-active .actions") &&
+    sidepanelCss.includes("0 -10px 28px color-mix(in oklch, var(--signal)") &&
     sidepanelCss.includes("xposter-queue-item-enter") &&
     sidepanelCss.includes(".draft-queue-item[data-status=\"writing\"] .draft-queue-index") &&
     sidepanelText.includes("function markQueueItemsEntered") &&

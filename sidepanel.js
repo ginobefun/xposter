@@ -2150,6 +2150,9 @@
           <button class="record-icon-action draft-queue-copy" type="button" data-queue-action="copy" data-queue-id="${safe(item.id)}" title="${safe(localizeText("Copy text"))}" aria-label="${safe(localizeText("Copy text"))}">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7h10v13H8V7Zm2 2v9h6V9h-6ZM5 4h10v2H7v10H5V4Z"/></svg>
           </button>
+          <button class="record-icon-action draft-queue-remove" type="button" data-queue-action="remove" data-queue-id="${safe(item.id)}" title="${safe(localizeText("Remove draft"))}" aria-label="${safe(localizeText("Remove draft"))}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-2 6h2v10h6V9h2v11a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V9Zm4 0h2v8h-2V9Z"/></svg>
+          </button>
         </div>
       </li>
     `;
@@ -2210,6 +2213,46 @@
       await copyMarkdownText(item?.markdown || "", { success: "Queued Markdown copied." });
       return;
     }
+    if (button.dataset.queueAction === "remove") {
+      removeDraftQueueItem(id);
+    }
+  }
+
+  function removeDraftQueueItem(id) {
+    const index = draftQueue.findIndex((entry) => entry.id === id);
+    if (index < 0) return false;
+    if (activeWriteQueueItemId === id || draftQueue[index]?.status === "writing") {
+      log("Stop writing before removing this draft.");
+      return false;
+    }
+    const wasActive = activeQueueItemId === id;
+    draftQueue = draftQueue.filter((entry) => entry.id !== id);
+    markDraftQueueMediaStale();
+    if (wasActive) activeQueueItemId = null;
+    if (!draftQueue.length) {
+      suppressNextTypedHistory = true;
+      window.clearTimeout(draftInputHistoryTimer);
+      setDraftText("");
+      saveDraft();
+      analyzeDraft();
+      setDraftDropStatus("Draft removed", "No pending drafts remain.", "idle");
+      persistDraftQueue();
+      renderDraftQueue();
+      updateWriteButton();
+      log("Queued draft removed.");
+      return true;
+    }
+    if (wasActive || !activeQueueItemId || !draftQueue.some((entry) => entry.id === activeQueueItemId)) {
+      const nextItem = draftQueue[Math.min(index, draftQueue.length - 1)];
+      loadQueueItem(nextItem.id, { persist: false, remember: false });
+    } else {
+      renderDraftQueue();
+      updateWriteButton();
+    }
+    persistDraftQueue();
+    setDraftDropStatus("Draft removed", queueSummaryText(), "done");
+    log("Queued draft removed.");
+    return true;
   }
 
   function loadQueueItem(id, { persist = true, remember = true } = {}) {

@@ -731,7 +731,7 @@ h2 {
   overflow: hidden;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 32px;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   column-gap: 8px;
   min-height: 72px;
@@ -904,7 +904,7 @@ h2 {
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
-  min-width: 32px;
+  min-width: 62px;
   opacity: .42;
   transition:
     opacity var(--motion-quick) ease,
@@ -930,6 +930,19 @@ h2 {
   color: var(--signal-text);
 }
 
+.draft-queue-remove {
+  width: 30px;
+  height: 30px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.draft-queue-remove:hover,
+.draft-queue-remove:focus-visible {
+  background: color-mix(in oklch, var(--danger), var(--paper) 92%);
+  color: var(--danger);
+}
+
 .composer.drag-active .drop-status {
   opacity: 0;
 }
@@ -947,7 +960,14 @@ h2 {
 }
 
 .composer.drag-active .actions {
-  opacity: .18;
+  border-color: color-mix(in oklch, var(--signal), var(--line) 12%);
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--signal), var(--paper) 70%), color-mix(in oklch, var(--signal), var(--paper) 86%)),
+    color-mix(in oklch, var(--signal), var(--paper) 82%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklch, var(--signal-ink), transparent 56%),
+    0 -10px 28px color-mix(in oklch, var(--signal), transparent 66%);
+  opacity: 1;
   pointer-events: none;
 }
 
@@ -5060,7 +5080,7 @@ textarea:focus-visible,
   }
 
   .draft-queue-item {
-    grid-template-columns: minmax(0, 1fr) 32px;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
     min-height: 72px;
     padding: 10px 8px 10px 14px;
