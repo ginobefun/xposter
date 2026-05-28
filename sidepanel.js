@@ -416,7 +416,6 @@
           continue;
         }
 
-        const firstItem = node;
         const groups = [];
         let cursor = node;
         while (cursor) {
@@ -437,15 +436,13 @@
           cursor = cursor.nextSibling;
         }
 
-        let insertBefore = firstItem;
         for (const group of groups) {
           const list = document.createElement(group.ordered ? "ol" : "ul");
-          container.insertBefore(list, insertBefore);
+          container.insertBefore(list, cursor);
           for (const item of group.items) {
             if (group.ordered) stripOrderedPreviewListMarker(item);
             list.appendChild(item);
           }
-          insertBefore = cursor;
         }
         node = cursor;
       }
