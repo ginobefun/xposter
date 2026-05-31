@@ -92,6 +92,8 @@
   let batchWriting = false;
   let batchWriteProgress = null;
   let batchWriteProgressTimer = null;
+  let lastWriteButtonContentReady = false;
+  let writeButtonRevealTimer = null;
   let importCancelRequested = false;
   let importOptions = { setTitle: true, setCover: true };
   let successFeedbackOptions = { confetti: true, sound: true, soundStyle: "soft" };
@@ -3555,6 +3557,14 @@
     if (actions) actions.dataset.empty = hasDraft || hasQueue || busy || batchWriting ? "false" : "true";
     const needsMarkdown = !hasDraft && !hasQueue;
     const disabled = busy || batchWriting || needsMarkdown;
+    const hasWriteableContent = hasDraft || hasQueue;
+    const shouldRevealReadyButton =
+      hasDraft &&
+      !hasQueue &&
+      !busy &&
+      !batchWriting &&
+      !lastWriteButtonContentReady &&
+      !prefersReducedMotion();
     button.disabled = disabled;
     button.setAttribute("aria-disabled", disabled ? "true" : "false");
     setImportButtonLabel(
@@ -3568,6 +3578,17 @@
               ? "Write to X draft"
               : "No Markdown yet"
     );
+    if (shouldRevealReadyButton) {
+      window.clearTimeout(writeButtonRevealTimer);
+      button.dataset.reveal = "write-ready";
+      writeButtonRevealTimer = window.setTimeout(() => {
+        if (button.dataset.reveal === "write-ready") delete button.dataset.reveal;
+      }, 520);
+    } else if (!hasWriteableContent || busy || batchWriting) {
+      window.clearTimeout(writeButtonRevealTimer);
+      delete button.dataset.reveal;
+    }
+    lastWriteButtonContentReady = hasWriteableContent;
     if (els.importHint) {
       const hint = needsMarkdown
         ? { tone: "ready", text: "Paste in the editor above, or choose a .md file." }

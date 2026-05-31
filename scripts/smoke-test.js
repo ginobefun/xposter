@@ -1182,12 +1182,17 @@ assert.ok(
     sidepanelCss.includes(".import-hint[hidden]") &&
     sidepanelText.includes('label: "No Markdown yet"') &&
     sidepanelText.includes('const needsMarkdown = !hasDraft && !hasQueue;') &&
+    sidepanelText.includes("lastWriteButtonContentReady") &&
+    sidepanelText.includes('button.dataset.reveal = "write-ready"') &&
     sidepanelText.includes('text: "Paste in the editor above, or choose a .md file."') &&
     sidepanelText.includes('return { hidden: true, tone: "ready", text: "" };') &&
     sidepanelText.includes("applyImportHint(hint)") &&
     sidepanelText.includes("els.importHint.hidden = hidden") &&
-    sidepanelText.includes('els.importHint.setAttribute("aria-hidden", hidden ? "true" : "false")'),
-  "short or empty drafts should stay compact and routine write readiness should not add a redundant button hint"
+    sidepanelText.includes('els.importHint.setAttribute("aria-hidden", hidden ? "true" : "false")') &&
+    sidepanelCss.includes(".actions:not([data-empty=\"true\"]) .primary[data-reveal=\"write-ready\"]") &&
+    sidepanelCss.includes("@keyframes xposter-write-ready-reveal") &&
+    sidepanelCss.includes("@keyframes xposter-write-ready-icon"),
+  "short or empty drafts should stay compact while the write button gets a restrained ready reveal"
 );
 assert.ok(
   sidepanelHtml.includes('id="draftDropTarget"') &&
