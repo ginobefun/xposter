@@ -129,6 +129,7 @@
   let lastWriteButtonContentReady = false;
   let writeButtonRevealTimer = null;
   let importCancelRequested = false;
+  let uploadRetryRequested = false;
   let importOptions = { setTitle: true, setCover: true };
   let successFeedbackOptions = { confetti: true, sound: true, soundStyle: "soft" };
   let articleExportOptions = { enabled: true, mode: "copy" };
@@ -1597,6 +1598,18 @@
     if (!response?.ok) {
       importCancelRequested = false;
       log(response?.error ? `Stop request failed: ${localizeText(response.error)}` : "Stop request failed: active X tab did not respond");
+      updateLiveProgress();
+    }
+  }
+
+  async function retryUpload() {
+    if (uploadRetryRequested) return;
+    uploadRetryRequested = true;
+    updateLiveProgress();
+    const response = await sendToTargetTab({ type: "xposter:retry-upload" });
+    if (!response?.ok) {
+      uploadRetryRequested = false;
+      log(response?.error ? `Retry request failed: ${localizeText(response.error)}` : "Retry request failed: active X tab did not respond");
       updateLiveProgress();
     }
   }
@@ -5261,6 +5274,7 @@
       ].join("; ");
       latestProgress.percent = Math.max(latestProgress.percent || 0, 28);
     } else if (eventName === "status") {
+      uploadRetryRequested = false;
       const text = String(payload.text || "").trim();
       if (!text && payload.level === "idle") {
         if (latestProgress.state !== "complete" && latestProgress.state !== "error" && latestProgress.state !== "cancelled") {
@@ -5276,17 +5290,25 @@
         latestProgress.text = text || "Writing";
         latestProgress.detail = progressDetailForStatus(text);
         latestProgress.percent = Math.max(latestProgress.percent || 0, progressPercentForStatus(text, payload.level));
+        latestProgress.uploadActive = Boolean(payload.uploadActive);
+        latestProgress.uploadRetryable = Boolean(payload.uploadRetryable);
       }
     } else if (eventName === "complete") {
+      uploadRetryRequested = false;
       latestProgress.state = "complete";
       latestProgress.level = "done";
+      latestProgress.uploadActive = false;
+      latestProgress.uploadRetryable = false;
       latestProgress.summary = payload.summary || null;
       latestProgress.text = "Writing complete";
       latestProgress.detail = summarizeProgressCompletion(payload.summary);
       latestProgress.percent = 100;
     } else if (eventName === "error") {
+      uploadRetryRequested = false;
       latestProgress.state = "error";
       latestProgress.level = "error";
+      latestProgress.uploadActive = false;
+      latestProgress.uploadRetryable = false;
       latestProgress.error = payload.error || "Unknown writing error";
       const mainSummary = payload.summary || payload.mainSummary || null;
       latestProgress.summary = mainSummary ? { main: mainSummary } : latestProgress.summary || null;
@@ -5296,8 +5318,11 @@
         : latestProgress.error;
       latestProgress.percent = Math.max(latestProgress.percent || 0, 100);
     } else if (eventName === "cancelled") {
+      uploadRetryRequested = false;
       latestProgress.state = "cancelled";
       latestProgress.level = "warn";
+      latestProgress.uploadActive = false;
+      latestProgress.uploadRetryable = false;
       latestProgress.error = payload.reason || "Writing stopped by user.";
       const mainSummary = payload.summary || payload.mainSummary || null;
       latestProgress.summary = mainSummary ? { main: mainSummary } : latestProgress.summary || null;
@@ -5307,8 +5332,11 @@
         : latestProgress.error;
       latestProgress.percent = Math.max(latestProgress.percent || 0, 100);
     } else if (eventName === "preflight-blocked") {
+      uploadRetryRequested = false;
       latestProgress.state = "error";
       latestProgress.level = "warn";
+      latestProgress.uploadActive = false;
+      latestProgress.uploadRetryable = false;
       latestProgress.error = payload.error || payload.text || "Check the draft before writing.";
       latestProgress.text = payload.text || latestProgress.error;
       latestProgress.detail = payload.error || payload.text || "Check the draft before writing.";
@@ -5418,6 +5446,12 @@
       setBooleanPropertyIfChanged(els.cancelImport, "hidden", !cancellable);
       setBooleanPropertyIfChanged(els.cancelImport, "disabled", importCancelRequested || !cancellable);
       setLocalizedTextIfChanged(els.cancelImport, importCancelRequested ? "Stopping..." : "Stop");
+    }
+    if (els.retryUpload) {
+      const retryable = state.state === "running" && Boolean(state.uploadRetryable);
+      setBooleanPropertyIfChanged(els.retryUpload, "hidden", !(retryable || uploadRetryRequested));
+      setBooleanPropertyIfChanged(els.retryUpload, "disabled", uploadRetryRequested || !retryable);
+      setLocalizedTextIfChanged(els.retryUpload, uploadRetryRequested ? "Retrying..." : "Retry now");
     }
     translateDynamicDom(els.liveProgress);
     syncProgressiveSectionVisibility();
@@ -5985,6 +6019,7 @@
     updateWriteButton({ busy: true });
     resetLiveProgress("import");
     importCancelRequested = false;
+    uploadRetryRequested = false;
     const mediaEstimate = mediaUploadEstimate(parsed);
     if (mediaEstimate.overSoftLimit) {
       const message = mediaLimitWarningText(mediaEstimate);
@@ -6032,6 +6067,7 @@
       options: writeOptionsPayload({ forceNewArticle: batch, sourceFileName: writeSourceFileName })
     }, { requireArticles: true });
     importCancelRequested = false;
+    uploadRetryRequested = false;
     if (response?.ok) {
       const seconds = ((response.summary?.elapsedMs || 0) / 1000).toFixed(1);
       const warnings =
@@ -8164,6 +8200,7 @@
   });
   window.addEventListener("pagehide", flushDraftSave);
   els.importDraft.addEventListener("click", runImportButtonAction);
+  els.retryUpload?.addEventListener("click", retryUpload);
   els.cancelImport?.addEventListener("click", cancelImport);
   els.pageState?.addEventListener("click", async () => {
     if (els.pageState.dataset.pageAction === "openArticles") await openArticles();

@@ -89,6 +89,7 @@
     "liveProgressBar",
     "liveProgressTitle",
     "liveProgressDetail",
+    "retryUpload",
     "cancelImport",
     "recoveryPanel",
     "recoveryMeta",

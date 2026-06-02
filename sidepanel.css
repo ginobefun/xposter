@@ -2810,7 +2810,7 @@ textarea:not(#markdown):focus-visible,
   position: relative;
   overflow: hidden;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 5px 9px;
   align-items: center;
   padding: 8px 9px;
@@ -2883,6 +2883,7 @@ textarea:not(#markdown):focus-visible,
   text-transform: uppercase;
 }
 
+.progress-retry,
 .progress-cancel {
   position: relative;
   z-index: 1;
@@ -2902,19 +2903,41 @@ textarea:not(#markdown):focus-visible,
     opacity var(--motion-quick) ease;
 }
 
+.progress-retry {
+  color: color-mix(in oklch, var(--signal), var(--muted) 28%);
+}
+
+.progress-retry[hidden],
 .progress-cancel[hidden] {
   display: none;
 }
 
+.progress-retry:hover,
 .progress-cancel:hover {
-  color: var(--danger);
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
 
+.progress-retry:hover {
+  color: var(--signal-text);
+}
+
+.progress-cancel:hover {
+  color: var(--danger);
+}
+
+.progress-retry:active {
+  color: color-mix(in oklch, var(--signal), var(--ink) 12%);
+}
+
 .progress-cancel:active {
   color: color-mix(in oklch, var(--danger), var(--ink) 18%);
+}
+
+.progress-retry:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--signal), transparent 48%);
+  outline-offset: 3px;
 }
 
 .progress-cancel:focus-visible {
@@ -2922,6 +2945,7 @@ textarea:not(#markdown):focus-visible,
   outline-offset: 3px;
 }
 
+.progress-retry:disabled,
 .progress-cancel:disabled {
   cursor: default;
   color: var(--muted);

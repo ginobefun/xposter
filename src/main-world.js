@@ -12,18 +12,22 @@
   const MEDIA_UPLOAD_PENDING_READY_MS = 20000;
   const MEDIA_UPLOAD_PENDING_STABLE_MS = 5000;
   const MEDIA_UPLOAD_PENDING_MAX_WAIT_MS = 32000;
+  const MEDIA_UPLOAD_USER_RETRY_AFTER_MS = 15000;
+  const MEDIA_UPLOAD_MAX_ATTEMPTS = 3;
+  const MEDIA_UPLOAD_RETRY_MIN_REMAINING_MS = 10000;
   const MEDIA_UPLOAD_TIMEOUT_ERROR =
     "X media upload took too long. X may be throttling this draft, especially with many images. Wait a moment, then write again or split the article.";
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   let cancelRequested = false;
+  let activeUploadRetry = null;
 
   function post(kind, payload = {}) {
     window.postMessage({ source: CHANNEL_FROM_MAIN, kind, ...payload }, "*");
   }
 
-  function progress(text, level = "work") {
-    post("progress", { text, level });
+  function progress(text, level = "work", extra = {}) {
+    post("progress", { text, level, ...extra });
   }
 
   function throwIfCancelled() {
@@ -668,12 +672,44 @@
     return location;
   }
 
+  function uploadProgressMeta(context, retryable = false) {
+    const index = Number(context?.index || 0);
+    const total = Number(context?.total || 0);
+    return {
+      uploadActive: true,
+      uploadRetryable: Boolean(retryable),
+      uploadIndex: index || null,
+      uploadTotal: total || null
+    };
+  }
+
+  function uploadProgressLabel(context, fallback = "image") {
+    const index = Number(context?.index || 0);
+    const total = Number(context?.total || 0);
+    return index && total ? `image ${index}/${total}` : fallback;
+  }
+
+  function requestActiveUploadRetry() {
+    if (!activeUploadRetry) {
+      progress("No image upload is active right now.", "warn");
+      return false;
+    }
+    if (!activeUploadRetry.retryable) {
+      progress("Retry is not available for the current image yet.", "warn", uploadProgressMeta(activeUploadRetry.context, false));
+      return false;
+    }
+    activeUploadRetry.requested = true;
+    activeUploadRetry.retryable = false;
+    progress(`Retry requested for ${uploadProgressLabel(activeUploadRetry.context)}.`, "warn", uploadProgressMeta(activeUploadRetry.context, false));
+    return true;
+  }
+
   async function uploadImageAtMarker(draftNode, imageOperation, existingAtomicBlocks, context = {}) {
     throwIfCancelled();
     const onFilesAdded = findOnFilesAdded();
     if (!onFilesAdded) return { ok: false, error: "X upload handler was not reachable" };
 
-    const markerLocation = placeSelectionAtMarker(draftNode, imageOperation.marker);
+    let markerLocation = placeSelectionAtMarker(draftNode, imageOperation.marker);
     if (!markerLocation) {
       return { ok: false, error: "Image placeholder was not found in the X editor" };
     }
@@ -695,105 +731,179 @@
       return { ok: false, error: error?.message || "Prepared image data was invalid", recoverable: true };
     }
 
-    try {
-      onFilesAdded([file]);
-    } catch (error) {
-      return { ok: false, error: error?.message || "X upload handler failed", recoverable: true };
-    }
     const timeoutMs = Math.min(
       MEDIA_UPLOAD_MAX_TIMEOUT_MS,
       MEDIA_UPLOAD_BASE_TIMEOUT_MS + Math.max(0, Number(context.total || 0) - 1) * MEDIA_UPLOAD_PER_ITEM_TIMEOUT_MS
     );
     const startedAt = Date.now();
     const deadline = startedAt + timeoutMs;
+    const retryState = { requested: false, retryable: false, context };
+    const canAttemptRetry = () => Date.now() + MEDIA_UPLOAD_RETRY_MIN_REMAINING_MS < deadline;
+    const startUploadAttempt = async (reason = "initial") => {
+      throwIfCancelled();
+      draftNode = findDraftStateNode() || draftNode;
+      const nextMarkerLocation = placeSelectionAtMarker(draftNode, imageOperation.marker);
+      if (!nextMarkerLocation) {
+        return { ok: false, error: "Image placeholder was not found in the X editor" };
+      }
+      markerLocation = nextMarkerLocation;
+      await sleep(80);
+      const handler = findOnFilesAdded() || onFilesAdded;
+      try {
+        handler([file]);
+      } catch (error) {
+        return { ok: false, error: error?.message || "X upload handler failed", recoverable: true };
+      }
+      return { ok: true, startedAt: Date.now(), reason };
+    };
+    const initialAttempt = await startUploadAttempt();
+    if (!initialAttempt.ok) return initialAttempt;
+    let attempt = 1;
+    let attemptStartedAt = initialAttempt.startedAt;
     let nextProgressAt = Date.now() + MEDIA_UPLOAD_PROGRESS_HEARTBEAT_MS;
+    let retryPromptShown = false;
     let pendingUpload = null;
     let pendingIdentitySignature = "";
     let pendingDataSignature = "";
     let pendingFirstSeenAt = 0;
     let pendingStableSince = 0;
-    while (Date.now() < deadline) {
-      throwIfCancelled();
-      await sleep(350);
-      const now = Date.now();
-      if (now >= nextProgressAt) {
-        const index = Number(context.index || 0);
-        const total = Number(context.total || 0);
-        if (index && total) {
-          progress(
-            pendingUpload
-              ? `Uploading image ${index}/${total}... waiting for X to finish.`
-              : `Uploading image ${index}/${total}...`
-          );
-        }
-        nextProgressAt = Date.now() + MEDIA_UPLOAD_PROGRESS_HEARTBEAT_MS;
+    const completeUploadResult = (found, extra = {}) => {
+      existingAtomicBlocks.add(found.blockKey);
+      return {
+        ok: true,
+        ...found,
+        ...extra,
+        markerBlock: markerLocation.blockKey,
+        markerOffset: markerLocation.offset,
+        markerLength: markerLocation.length,
+        markerExact: markerLocation.exact
+      };
+    };
+    const rememberPendingUpload = (found, now) => {
+      const identitySignature = `${found.entityKey}:${found.blockKey}`;
+      if (identitySignature !== pendingIdentitySignature) {
+        pendingIdentitySignature = identitySignature;
+        pendingDataSignature = found.dataSignature || "";
+        pendingFirstSeenAt = now;
+        pendingStableSince = now;
+      } else if ((found.dataSignature || "") !== pendingDataSignature) {
+        pendingDataSignature = found.dataSignature || "";
+        pendingStableSince = now;
       }
-      draftNode = findDraftStateNode() || draftNode;
-      const contentState = draftNode.props.editorState.getCurrentContent();
-      const found = findNewMediaUpload(contentState, before, existingAtomicBlocks);
-      if (found?.mediaId) {
-        existingAtomicBlocks.add(found.blockKey);
-        return {
-          ok: true,
-          ...found,
-          markerBlock: markerLocation.blockKey,
-          markerOffset: markerLocation.offset,
-          markerLength: markerLocation.length,
-          markerExact: markerLocation.exact
-        };
-      }
-      if (found) {
-        const identitySignature = `${found.entityKey}:${found.blockKey}`;
-        if (identitySignature !== pendingIdentitySignature) {
-          pendingIdentitySignature = identitySignature;
-          pendingDataSignature = found.dataSignature || "";
-          pendingFirstSeenAt = now;
-          pendingStableSince = now;
-        } else if ((found.dataSignature || "") !== pendingDataSignature) {
-          pendingDataSignature = found.dataSignature || "";
-          pendingStableSince = now;
-        }
-        pendingUpload = found;
-        const pendingReady =
-          canUsePendingMediaUpload(imageOperation) &&
-          (now - pendingFirstSeenAt >= MEDIA_UPLOAD_PENDING_MAX_WAIT_MS ||
-            (now - pendingFirstSeenAt >= MEDIA_UPLOAD_PENDING_READY_MS &&
-              now - pendingStableSince >= MEDIA_UPLOAD_PENDING_STABLE_MS));
-        if (pendingReady) {
+      pendingUpload = found;
+    };
+    activeUploadRetry = retryState;
+    try {
+      while (Date.now() < deadline) {
+        throwIfCancelled();
+        await sleep(350);
+        const now = Date.now();
+        const retryable = !pendingUpload && attempt < MEDIA_UPLOAD_MAX_ATTEMPTS && canAttemptRetry();
+        const userRetryable = retryable && now - attemptStartedAt >= MEDIA_UPLOAD_USER_RETRY_AFTER_MS;
+        retryState.retryable = userRetryable;
+        if (!retryPromptShown && userRetryable) {
+          const label = uploadProgressLabel(context);
+          progress(`${label[0].toUpperCase()}${label.slice(1)} is taking longer than usual. Retry is available.`, "warn", uploadProgressMeta(context, true));
+          retryPromptShown = true;
+          nextProgressAt = Date.now() + MEDIA_UPLOAD_PROGRESS_HEARTBEAT_MS;
+        } else if (now >= nextProgressAt) {
           const index = Number(context.index || 0);
           const total = Number(context.total || 0);
-          existingAtomicBlocks.add(found.blockKey);
-          if (index && total) progress(`Image ${index}/${total} is in the editor; continuing...`);
-          return {
-            ok: true,
-            ...found,
-            mediaPending: true,
-            markerBlock: markerLocation.blockKey,
-            markerOffset: markerLocation.offset,
-            markerLength: markerLocation.length,
-            markerExact: markerLocation.exact
-          };
+          if (index && total) {
+            progress(
+              pendingUpload
+                ? `Uploading image ${index}/${total}... waiting for X to finish.`
+                : `Uploading image ${index}/${total}...`,
+              pendingUpload ? "work" : "work",
+              uploadProgressMeta(context, userRetryable)
+            );
+          }
+          nextProgressAt = Date.now() + MEDIA_UPLOAD_PROGRESS_HEARTBEAT_MS;
         }
-      } else {
-        pendingUpload = null;
-        pendingIdentitySignature = "";
-        pendingDataSignature = "";
-        pendingFirstSeenAt = 0;
-        pendingStableSince = 0;
-        if (now - startedAt >= MEDIA_UPLOAD_NO_ENTITY_TIMEOUT_MS) {
-          return {
-            ok: false,
-            error: MEDIA_UPLOAD_TIMEOUT_ERROR,
-            timeout: true,
-            timeoutMs: MEDIA_UPLOAD_NO_ENTITY_TIMEOUT_MS,
-            pendingEntity: false,
-            noEntity: true
-          };
+        draftNode = findDraftStateNode() || draftNode;
+        const contentState = draftNode.props.editorState.getCurrentContent();
+        const found = findNewMediaUpload(contentState, before, existingAtomicBlocks);
+        if (found?.mediaId) {
+          retryState.retryable = false;
+          return completeUploadResult(found);
+        }
+        if (found) {
+          retryState.retryable = false;
+          rememberPendingUpload(found, now);
+          if (retryState.requested) {
+            retryState.requested = false;
+            progress(`${uploadProgressLabel(context, "This image")} reached X already; waiting to avoid a duplicate upload.`, "warn", uploadProgressMeta(context, false));
+          }
+          const pendingReady =
+            canUsePendingMediaUpload(imageOperation) &&
+            (now - pendingFirstSeenAt >= MEDIA_UPLOAD_PENDING_MAX_WAIT_MS ||
+              (now - pendingFirstSeenAt >= MEDIA_UPLOAD_PENDING_READY_MS &&
+                now - pendingStableSince >= MEDIA_UPLOAD_PENDING_STABLE_MS));
+          if (pendingReady) {
+            const index = Number(context.index || 0);
+            const total = Number(context.total || 0);
+            if (index && total) progress(`Image ${index}/${total} is in the editor; continuing...`, "work", uploadProgressMeta(context, false));
+            return completeUploadResult(found, { mediaPending: true });
+          }
+        } else {
+          pendingUpload = null;
+          pendingIdentitySignature = "";
+          pendingDataSignature = "";
+          pendingFirstSeenAt = 0;
+          pendingStableSince = 0;
+          const shouldManualRetry = retryState.requested && retryable;
+          const shouldAutoRetry = now - attemptStartedAt >= MEDIA_UPLOAD_NO_ENTITY_TIMEOUT_MS && retryable;
+          if (shouldManualRetry || shouldAutoRetry) {
+            retryState.requested = false;
+            retryState.retryable = false;
+            const label = uploadProgressLabel(context);
+            progress(
+              shouldManualRetry
+                ? `Retrying ${label} now...`
+                : `${label[0].toUpperCase()}${label.slice(1)} did not start in X. Retrying...`,
+              "warn",
+              uploadProgressMeta(context, false)
+            );
+            await sleep(MEDIA_UPLOAD_RETRY_MIN_REMAINING_MS > 0 ? Math.min(1200, MEDIA_UPLOAD_RETRY_MIN_REMAINING_MS) : 0);
+            draftNode = findDraftStateNode() || draftNode;
+            const retryContentState = draftNode.props.editorState.getCurrentContent();
+            const retryFound = findNewMediaUpload(retryContentState, before, existingAtomicBlocks);
+            if (retryFound?.mediaId) return completeUploadResult(retryFound);
+            if (retryFound) {
+              retryState.retryable = false;
+              rememberPendingUpload(retryFound, Date.now());
+              progress(`${uploadProgressLabel(context, "This image")} reached X already; waiting to avoid a duplicate upload.`, "warn", uploadProgressMeta(context, false));
+              nextProgressAt = Date.now() + MEDIA_UPLOAD_PROGRESS_HEARTBEAT_MS;
+              retryPromptShown = true;
+              continue;
+            }
+            attempt += 1;
+            const nextAttempt = await startUploadAttempt(shouldManualRetry ? "manual" : "auto");
+            if (!nextAttempt.ok) return nextAttempt;
+            attemptStartedAt = nextAttempt.startedAt;
+            nextProgressAt = Date.now() + MEDIA_UPLOAD_PROGRESS_HEARTBEAT_MS;
+            retryPromptShown = false;
+            continue;
+          }
+          retryState.requested = false;
+          if (now - attemptStartedAt >= MEDIA_UPLOAD_NO_ENTITY_TIMEOUT_MS) {
+            return {
+              ok: false,
+              error: MEDIA_UPLOAD_TIMEOUT_ERROR,
+              timeout: true,
+              timeoutMs: MEDIA_UPLOAD_NO_ENTITY_TIMEOUT_MS,
+              pendingEntity: false,
+              noEntity: true,
+              attempts: attempt
+            };
+          }
         }
       }
-    }
 
-    return { ok: false, error: MEDIA_UPLOAD_TIMEOUT_ERROR, timeout: true, timeoutMs, pendingEntity: Boolean(pendingUpload) };
+      return { ok: false, error: MEDIA_UPLOAD_TIMEOUT_ERROR, timeout: true, timeoutMs, pendingEntity: Boolean(pendingUpload), attempts: attempt };
+    } finally {
+      if (activeUploadRetry === retryState) activeUploadRetry = null;
+    }
   }
 
   function replaceMarkerText(draftNode, marker, text) {
@@ -1429,6 +1539,10 @@
     if (event.data.kind === "cancel") {
       cancelRequested = true;
       progress("Writing stopped by user.", "warn");
+      return;
+    }
+    if (event.data.kind === "retry-upload") {
+      requestActiveUploadRetry();
       return;
     }
     if (event.data.kind === "upload-files") {

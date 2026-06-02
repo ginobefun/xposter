@@ -47,6 +47,10 @@
     "Preparing Markdown...": "正在准备 Markdown...",
     "Stop": "停止",
     "Stopping...": "正在停止...",
+    "Retry now": "立即重试",
+    "Retrying...": "正在重试...",
+    "No image upload is active right now.": "当前没有正在上传的图片。",
+    "Retry is not available for the current image yet.": "当前图片暂时还不能重试。",
     "Stop requested": "已请求停止",
     "Open X Articles first": "请先打开 X 文章",
     "X editor bridge is not ready": "X 编辑器桥接尚未就绪",
@@ -181,6 +185,7 @@
     runtimeInvalidated: false,
     currentMarkdown: "",
     cancelRequested: false,
+    uploadRetryRequested: false,
     activeRun: null,
     statusTimer: 0,
     language: "en",
@@ -394,6 +399,12 @@
       [/^Preparing image (\d+)\/(\d+)\.\.\.$/, "正在准备图片 $1/$2..."],
       [/^Prepared (\d+)\/(\d+) image\(s\)\.\.\.$/, "已准备 $1/$2 张图片..."],
       [/^Retrying image (.+)\.\.\.$/, "正在重试图片 $1..."],
+      [/^Retry requested for image (\d+)\/(\d+)\.$/, "已请求重试图片 $1/$2。"],
+      [/^Retrying image (\d+)\/(\d+) now\.\.\.$/, "正在立即重试图片 $1/$2..."],
+      [/^Image (\d+)\/(\d+) did not start in X\. Retrying\.\.\.$/, "图片 $1/$2 未在 X 开始上传，正在重试..."],
+      [/^Image (\d+)\/(\d+) is taking longer than usual\. Retry is available\.$/, "图片 $1/$2 等待时间较长，可以立即重试。"],
+      [/^Image (\d+)\/(\d+) reached X already; waiting to avoid a duplicate upload\.$/, "图片 $1/$2 已到达 X，继续等待以避免重复上传。"],
+      [/^This image reached X already; waiting to avoid a duplicate upload\.$/, "这张图片已到达 X，继续等待以避免重复上传。"],
       [/^Rendering (\d+) table\(s\)\.\.\.$/, "正在渲染 $1 个表格..."],
       [/^Uploading image (\d+)\/(\d+)\.\.\.$/, "正在上传图片 $1/$2..."],
       [/^Uploading image (\d+)\/(\d+)\.\.\. waiting for X to finish\.$/, "正在上传图片 $1/$2，等待 X 完成处理..."],
@@ -622,11 +633,17 @@
           <span>xPoster</span>
           <div class="__xposter_status_actions">
             <strong></strong>
+            <button class="__xposter_status_retry" type="button" hidden></button>
             <button class="__xposter_status_stop" type="button" hidden></button>
           </div>
         </div>
         <p></p>
       `;
+      statusCardNodes(card).retryButton?.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        retryActiveUpload();
+      });
       statusCardNodes(card).stopButton?.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -643,9 +660,15 @@
     updateStatusProgress(card, text, level, previousLevel);
     setTextContentIfChanged(title, translateContentText(statusTitleForLevel(level)));
     setTextContentIfChanged(detail, translateContentText(text));
-    syncStatusStopButton(card, level);
+    syncStatusButtons(card, level);
     setClassPresenceIfChanged(document.body, "__xposter_status_visible", true);
-    broadcast({ type: "status", text, level });
+    broadcast({
+      type: "status",
+      text,
+      level,
+      uploadActive: card.dataset.uploadActive === "true",
+      uploadRetryable: card.dataset.uploadRetryable === "true"
+    });
     if (state.statusTimer) {
       window.clearTimeout(state.statusTimer);
       state.statusTimer = 0;
@@ -668,10 +691,30 @@
       (root) => ({
         title: root.querySelector("strong"),
         detail: root.querySelector("p"),
+        retryButton: root.querySelector(".__xposter_status_retry"),
         stopButton: root.querySelector(".__xposter_status_stop")
       }),
-      (nodes) => nodes.title?.isConnected && nodes.detail?.isConnected && nodes.stopButton?.isConnected
+      (nodes) => nodes.title?.isConnected && nodes.detail?.isConnected && nodes.retryButton?.isConnected && nodes.stopButton?.isConnected
     );
+  }
+
+  function syncStatusButtons(card = document.getElementById(STATUS_ID), level = card?.dataset?.level || "work") {
+    syncStatusRetryButton(card, level);
+    syncStatusStopButton(card, level);
+  }
+
+  function syncStatusRetryButton(card = document.getElementById(STATUS_ID), level = card?.dataset?.level || "work") {
+    const button = statusCardNodes(card).retryButton;
+    if (!card || !button) return;
+    const retrying = state.busy && state.uploadRetryRequested;
+    const canRetry = state.busy && !state.cancelRequested && card.dataset.uploadRetryable === "true" && (level === "work" || level === "warn");
+    const visible = canRetry || retrying;
+    setBooleanPropertyIfChanged(button, "hidden", !visible);
+    setBooleanPropertyIfChanged(button, "disabled", retrying || !canRetry);
+    setTextContentIfChanged(button, translateContentText(retrying ? "Retrying..." : "Retry now"));
+    setAttributeValueIfChanged(button, "aria-label", translateContentText(retrying ? "Retrying..." : "Retry now"));
+    setDatasetValueIfChanged(card, "retrying", String(retrying));
+    setDatasetValueIfChanged(card, "retryable", String(visible));
   }
 
   function syncStatusStopButton(card = document.getElementById(STATUS_ID), level = card?.dataset?.level || "work") {
@@ -730,7 +773,7 @@
       const { title, detail } = statusCardNodes(status);
       setTextContentIfChanged(title, translateContentText(statusTitleForLevel(level)));
       setTextContentIfChanged(detail, translateContentText(status.dataset.statusText || contentSourceText(detail.textContent || "")));
-      syncStatusStopButton(status, level);
+      syncStatusButtons(status, level);
     }
     updateArticleExportButtonMode();
     updateVisibleDropHintCopy();
@@ -887,6 +930,7 @@
         gap: 8px;
         min-width: 0;
       }
+      #${STATUS_ID} .__xposter_status_retry,
       #${STATUS_ID} .__xposter_status_stop {
         appearance: none;
         border: 1px solid color-mix(in oklch, var(--__xposter-status-tone), var(--__xposter-status-line) 54%);
@@ -901,16 +945,28 @@
         cursor: pointer;
         transition: transform 140ms cubic-bezier(0.22, 1, 0.36, 1), background-color 140ms ease-out, border-color 140ms ease-out, opacity 140ms ease-out;
       }
+      #${STATUS_ID} .__xposter_status_retry {
+        border-color: color-mix(in oklch, var(--__xposter-status-ok), var(--__xposter-status-line) 50%);
+        background: color-mix(in oklch, var(--__xposter-status-ok), transparent 92%);
+        color: var(--__xposter-status-ok);
+      }
+      #${STATUS_ID} .__xposter_status_retry[hidden],
       #${STATUS_ID} .__xposter_status_stop[hidden] {
         display: none;
       }
+      #${STATUS_ID} .__xposter_status_retry:hover,
       #${STATUS_ID} .__xposter_status_stop:hover {
         transform: translateY(-1px);
         background: color-mix(in oklch, var(--__xposter-status-tone), transparent 88%);
       }
+      #${STATUS_ID} .__xposter_status_retry:hover {
+        background: color-mix(in oklch, var(--__xposter-status-ok), transparent 86%);
+      }
+      #${STATUS_ID} .__xposter_status_retry:active,
       #${STATUS_ID} .__xposter_status_stop:active {
         transform: translateY(0) scale(0.97);
       }
+      #${STATUS_ID} .__xposter_status_retry:disabled,
       #${STATUS_ID} .__xposter_status_stop:disabled {
         cursor: default;
         opacity: 0.72;
@@ -944,6 +1000,7 @@
         #${STATUS_ID}[data-progress="indeterminate"]::before {
           animation: none;
         }
+        #${STATUS_ID} .__xposter_status_retry,
         #${STATUS_ID} .__xposter_status_stop {
           transition: none;
         }
@@ -1183,6 +1240,14 @@
     return { ok: true, cancelled: true };
   }
 
+  function retryActiveUpload() {
+    if (!state.busy) return { ok: false, error: "No image upload is active right now." };
+    state.uploadRetryRequested = true;
+    syncStatusButtons();
+    window.postMessage({ source: CHANNEL_TO_MAIN, kind: "retry-upload" }, "*");
+    return { ok: true, retryRequested: true };
+  }
+
   function articleMediaUploadEstimate(parsed = null, options = {}) {
     const segments = Array.isArray(parsed?.segments) ? parsed.segments : [];
     const coverSource = options.setCover === false ? "" : String(parsed?.cover || "").trim();
@@ -1281,6 +1346,12 @@
           return;
         }
         if (message.kind === "progress") {
+          state.uploadRetryRequested = false;
+          const card = document.getElementById(STATUS_ID);
+          if (card) {
+            setDatasetValueIfChanged(card, "uploadActive", String(Boolean(message.uploadActive)));
+            setDatasetValueIfChanged(card, "uploadRetryable", String(Boolean(message.uploadRetryable)));
+          }
           showStatus(message.text || "...", message.level || "work");
           refreshTimeout();
           return;
@@ -1323,6 +1394,7 @@
     const forceNewArticle = Boolean(options.forceNewArticle);
     state.busy = true;
     state.cancelRequested = false;
+    state.uploadRetryRequested = false;
     state.currentMarkdown = markdown;
     const startedAt = performance.now();
     showStatus("Preparing Markdown...", "work");
@@ -1418,9 +1490,15 @@
     } finally {
       state.busy = false;
       state.cancelRequested = false;
+      state.uploadRetryRequested = false;
       state.activeRun = null;
       state.currentMarkdown = "";
-      syncStatusStopButton();
+      const card = document.getElementById(STATUS_ID);
+      if (card) {
+        setDatasetValueIfChanged(card, "uploadActive", "false");
+        setDatasetValueIfChanged(card, "uploadRetryable", "false");
+      }
+      syncStatusButtons();
     }
   }
 
@@ -4620,6 +4698,10 @@
     }
     if (message?.type === "xposter:cancel-import") {
       sendResponse(cancelActiveImport());
+      return false;
+    }
+    if (message?.type === "xposter:retry-upload") {
+      sendResponse(retryActiveUpload());
       return false;
     }
     if (message?.type === "xposter:success-celebration") {

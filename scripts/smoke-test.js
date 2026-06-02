@@ -1235,10 +1235,20 @@ assert.ok(
     mainWorldText.includes("const MEDIA_UPLOAD_PENDING_READY_MS = 20000") &&
     mainWorldText.includes("const MEDIA_UPLOAD_PENDING_STABLE_MS = 5000") &&
     mainWorldText.includes("const MEDIA_UPLOAD_PENDING_MAX_WAIT_MS = 32000") &&
+    mainWorldText.includes("const MEDIA_UPLOAD_USER_RETRY_AFTER_MS = 15000") &&
+    mainWorldText.includes("const MEDIA_UPLOAD_MAX_ATTEMPTS = 3") &&
+    mainWorldText.includes("const MEDIA_UPLOAD_RETRY_MIN_REMAINING_MS = 10000") &&
+    mainWorldText.includes("let activeUploadRetry = null;") &&
     mainWorldText.includes("function canUsePendingMediaUpload(operation)") &&
     mainWorldText.includes("return !operation?.op?.coverOnly;") &&
     mainWorldText.includes("Uploading image ${index}/${total}... waiting for X to finish.") &&
     mainWorldText.includes("Image ${index}/${total} is in the editor; continuing...") &&
+    mainWorldText.includes("function uploadProgressMeta(context, retryable = false)") &&
+    mainWorldText.includes("uploadRetryable: Boolean(retryable)") &&
+    mainWorldText.includes("function requestActiveUploadRetry()") &&
+    mainWorldText.includes("Retry is not available for the current image yet.") &&
+    mainWorldText.includes("activeUploadRetry.requested = true;") &&
+    mainWorldText.includes("activeUploadRetry.retryable = false;") &&
     mainWorldText.includes("function mediaEntityDataSignature(data)") &&
     mainWorldText.includes("function findNewMediaUpload") &&
     mainWorldText.includes("function mediaUploadInfoFromBlock(contentState, blockKey)") &&
@@ -1268,11 +1278,20 @@ assert.ok(
     mainWorldText.includes("const refreshed = await waitForUploadMediaId(draftNode, upload);") &&
     mainWorldText.includes("if (candidate.mediaId) complete = candidate;") &&
     mainWorldText.includes("else pending ||= candidate;") &&
+    mainWorldText.includes("const retryState = { requested: false, retryable: false, context };") &&
+    mainWorldText.includes("const canAttemptRetry = () => Date.now() + MEDIA_UPLOAD_RETRY_MIN_REMAINING_MS < deadline;") &&
+    mainWorldText.includes('const startUploadAttempt = async (reason = "initial") => {') &&
+    mainWorldText.includes("const initialAttempt = await startUploadAttempt();") &&
+    mainWorldText.includes("const retryable = !pendingUpload && attempt < MEDIA_UPLOAD_MAX_ATTEMPTS && canAttemptRetry();") &&
+    mainWorldText.includes("const userRetryable = retryable && now - attemptStartedAt >= MEDIA_UPLOAD_USER_RETRY_AFTER_MS;") &&
+    mainWorldText.includes("retryState.retryable = userRetryable;") &&
     mainWorldText.includes("if (found?.mediaId)") &&
     mainWorldText.includes("canUsePendingMediaUpload(imageOperation)") &&
     mainWorldText.includes('const identitySignature = `${found.entityKey}:${found.blockKey}`;') &&
     mainWorldText.includes("if (identitySignature !== pendingIdentitySignature)") &&
     mainWorldText.includes('} else if ((found.dataSignature || "") !== pendingDataSignature) {') &&
+    mainWorldText.includes("retryState.requested = false;") &&
+    mainWorldText.includes("reached X already; waiting to avoid a duplicate upload.") &&
     mainWorldText.includes("now - pendingFirstSeenAt >= MEDIA_UPLOAD_PENDING_READY_MS") &&
     mainWorldText.includes("now - pendingStableSince >= MEDIA_UPLOAD_PENDING_STABLE_MS") &&
     mainWorldText.includes("now - pendingFirstSeenAt >= MEDIA_UPLOAD_PENDING_MAX_WAIT_MS") &&
@@ -1280,13 +1299,31 @@ assert.ok(
     mainWorldText.includes("if (result.mediaPending) summary.imgPending += 1") &&
     mainWorldText.includes("let imageBlock = upload.blockKey && blockMap.has(upload.blockKey) ? upload.blockKey : null;") &&
     mainWorldText.includes("if (!imageBlock && upload.entityKey) imageBlock = entityToBlock.get(upload.entityKey) || null;") &&
-    mainWorldText.includes("now - startedAt >= MEDIA_UPLOAD_NO_ENTITY_TIMEOUT_MS") &&
+    mainWorldText.includes("const shouldManualRetry = retryState.requested && retryable;") &&
+    mainWorldText.includes("const shouldAutoRetry = now - attemptStartedAt >= MEDIA_UPLOAD_NO_ENTITY_TIMEOUT_MS && retryable;") &&
+    mainWorldText.includes("Retrying ${label} now...") &&
+    mainWorldText.includes("${label[0].toUpperCase()}${label.slice(1)} did not start in X. Retrying...") &&
+    mainWorldText.includes("const nextAttempt = await startUploadAttempt(shouldManualRetry ? \"manual\" : \"auto\");") &&
+    mainWorldText.includes("now - attemptStartedAt >= MEDIA_UPLOAD_NO_ENTITY_TIMEOUT_MS") &&
     mainWorldText.includes("noEntity: true") &&
+    mainWorldText.includes("attempts: attempt") &&
+    mainWorldText.includes('if (event.data.kind === "retry-upload")') &&
+    mainWorldText.includes("requestActiveUploadRetry();") &&
     contentScriptText.includes("const MAIN_WORLD_SILENCE_TIMEOUT_MS = 180000") &&
+    contentScriptText.includes('"Retry is not available for the current image yet.": "当前图片暂时还不能重试。"') &&
     contentScriptText.includes("try {\n        last = await loadImage(source, fallbackName);") &&
     contentScriptText.includes("if (error?.cancelled) throw error;") &&
     contentScriptText.includes("last = { ok: false, error: error?.message || \"Image fetch failed\", source };") &&
     contentScriptText.includes("}, MAIN_WORLD_SILENCE_TIMEOUT_MS);") &&
+    contentScriptText.includes("function retryActiveUpload()") &&
+    contentScriptText.includes('window.postMessage({ source: CHANNEL_TO_MAIN, kind: "retry-upload" }, "*");') &&
+    contentScriptText.includes('message?.type === "xposter:retry-upload"') &&
+    sidepanelHtml.includes('id="retryUpload"') &&
+    sidepanelElementsText.includes('"retryUpload"') &&
+    sidepanelText.includes("async function retryUpload()") &&
+    sidepanelText.includes('{ type: "xposter:retry-upload" }') &&
+    sidepanelText.includes("latestProgress.uploadRetryable = Boolean(payload.uploadRetryable);") &&
+    sidepanelText.includes('setLocalizedTextIfChanged(els.retryUpload, uploadRetryRequested ? "Retrying..." : "Retry now");') &&
     mainWorldText.includes("X media upload took too long. X may be throttling this draft") &&
     mainWorldText.includes("timeoutMs") &&
     !mainWorldText.includes("Timed out waiting for X media upload") &&
