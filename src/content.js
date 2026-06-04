@@ -20,6 +20,7 @@
   const nodeCache = new WeakMap();
   const SIDEPANEL_DRAFT_STORAGE_KEY = "xposter_sidepanel_draft";
   const PENDING_ARTICLE_IMPORT_STORAGE_KEY = "xposter_pending_article_import";
+  const IMPORT_OPTIONS_STORAGE_KEY = "xposter_import_options";
   const ARTICLE_EXPORT_SETTINGS_STORAGE_KEY = "xposter_article_export_settings";
   const LANGUAGE_STORAGE_KEY = "xposter_language";
   const THEME_STORAGE_KEY = "xposter_theme";
@@ -260,6 +261,24 @@
       smartPunctuation: options.smartPunctuation === true,
       ...titleCandidateOptions(options)
     };
+  }
+
+  async function pageImportOptions(options = {}) {
+    const stored = await storedImportOptions();
+    return normalizeImportOptions({
+      ...stored,
+      ...options
+    });
+  }
+
+  async function storedImportOptions() {
+    if (typeof chrome === "undefined" || !chrome.storage?.local) return {};
+    try {
+      const stored = await chrome.storage.local.get(IMPORT_OPTIONS_STORAGE_KEY);
+      return stored?.[IMPORT_OPTIONS_STORAGE_KEY] || {};
+    } catch {
+      return {};
+    }
   }
 
   function isArticleRoute() {
@@ -2041,7 +2060,7 @@
     if (!shared.looksLikeMarkdown(text)) return;
     event.preventDefault();
     event.stopPropagation();
-    await importMarkdown(text, "paste");
+    await importMarkdown(text, "paste", await pageImportOptions());
   }
 
   async function readMarkdownFile(file) {
@@ -2054,7 +2073,7 @@
   async function importFile(file, origin = "file") {
     const text = await readMarkdownFile(file);
     await ensureEditorReadyForFileImport();
-    return importMarkdown(text, origin, { sourceFileName: file.name || "" });
+    return importMarkdown(text, origin, await pageImportOptions({ sourceFileName: file.name || "" }));
   }
 
   async function openArticlePageForPendingImport(markdown = "", source = "drop", options = {}) {
@@ -2071,7 +2090,11 @@
     await ensureEditorReadyForFileImport();
     const pending = await takePendingArticleImport();
     const pendingSourceFileName = pending?.fileName || options.sourceFileName || options.fileName || "";
-    return importMarkdown(pending?.markdown || markdown, pending?.source || source, { sourceFileName: pendingSourceFileName });
+    return importMarkdown(
+      pending?.markdown || markdown,
+      pending?.source || source,
+      await pageImportOptions({ sourceFileName: pendingSourceFileName })
+    );
   }
 
   async function stageSingleMarkdownForArticle(markdown, { fileName = "", source = "drop" } = {}) {
@@ -2081,7 +2104,8 @@
       return { ok: false, error: "No Markdown content" };
     }
     const sourceFileName = normalizeSourceFileName(fileName);
-    const preflight = preflightArticleMediaLimit(text, { sourceFileName });
+    const importOptions = await pageImportOptions({ sourceFileName });
+    const preflight = preflightArticleMediaLimit(text, importOptions);
     if (!preflight.ok) {
       showStatus(preflight.error, "warn", 9000);
       broadcast({
@@ -2104,12 +2128,16 @@
     try {
       if (!stored) {
         await ensureEditorReadyForFileImport();
-        return importMarkdown(text, source, { sourceFileName });
+        return importMarkdown(text, source, importOptions);
       }
       if (isArticleRoute()) {
         await ensureEditorReadyForFileImport();
         const pending = await takePendingArticleImport();
-        return importMarkdown(pending?.markdown || text, pending?.source || source, { sourceFileName: pending?.fileName || sourceFileName });
+        return importMarkdown(
+          pending?.markdown || text,
+          pending?.source || source,
+          await pageImportOptions({ sourceFileName: pending?.fileName || sourceFileName })
+        );
       }
       return openArticlePageForPendingImport(text, source, { sourceFileName });
     } catch (error) {
@@ -2131,7 +2159,8 @@
     showStatus("Opening X Article...", "work");
     try {
       const sourceFileName = normalizeSourceFileName(pending.fileName);
-      const preflight = preflightArticleMediaLimit(pending.markdown, { sourceFileName });
+      const importOptions = await pageImportOptions({ sourceFileName });
+      const preflight = preflightArticleMediaLimit(pending.markdown, importOptions);
       if (!preflight.ok) {
         await discardPendingArticleImport();
         showStatus(preflight.error, "warn", 9000);
@@ -2152,9 +2181,11 @@
       }
       await ensureEditorReadyForFileImport();
       const stored = await takePendingArticleImport();
-      await importMarkdown(stored?.markdown || pending.markdown, stored?.source || pending.source || "drop", {
-        sourceFileName: stored?.fileName || sourceFileName
-      });
+      await importMarkdown(
+        stored?.markdown || pending.markdown,
+        stored?.source || pending.source || "drop",
+        await pageImportOptions({ sourceFileName: stored?.fileName || sourceFileName })
+      );
     } catch (error) {
       showStatus(error?.message || "Could not write dropped Markdown", "error", 7000);
     }

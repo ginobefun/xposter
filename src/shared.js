@@ -109,7 +109,7 @@
   function parseFrontmatter(markdown) {
     const normalized = String(markdown ?? "").replace(/\r\n/g, "\n");
     const match = normalized.match(/^---\n([\s\S]*?)\n---\n*/);
-    if (!match) return { body: normalized.trim(), meta: {} };
+    if (!match) return { body: trimMarkdownBody(normalized), meta: {} };
     const meta = {};
     for (const line of match[1].split("\n")) {
       const index = line.indexOf(":");
@@ -121,7 +121,13 @@
         .replace(/^["']|["']$/g, "");
       if (key) meta[key] = value;
     }
-    return { body: normalized.slice(match[0].length).trim(), meta };
+    return { body: trimMarkdownBody(normalized.slice(match[0].length)), meta };
+  }
+
+  function trimMarkdownBody(value) {
+    return String(value ?? "")
+      .replace(/^(?:[ \t]*\n)+/g, "")
+      .replace(/(?:\n[ \t]*)+$/g, "");
   }
 
   function markdownTitleCandidate(value) {
@@ -294,6 +300,105 @@
     return value && enabled ? normalizeSmartPunctuationText(value) : value;
   }
 
+  function normalizeSmartPunctuationRanges(ranges = [], length = 0) {
+    const normalized = [];
+    const sorted = [...ranges].sort((left, right) => Number(left.start || 0) - Number(right.start || 0));
+    for (const range of sorted) {
+      const startValue = Number(range.start || 0);
+      const start = Math.max(0, Math.min(length, startValue));
+      const fallbackEnd = startValue + Number(range.length || 0);
+      const rawEnd = Number(range.end == null ? fallbackEnd : range.end);
+      const end = Math.max(start, Math.min(length, rawEnd));
+      if (end <= start) continue;
+      const previous = normalized[normalized.length - 1];
+      if (previous && start <= previous.end) {
+        previous.end = Math.max(previous.end, end);
+      } else {
+        normalized.push({ start, end });
+      }
+    }
+    return normalized;
+  }
+
+  function normalizeSmartPunctuationWithProtectedRanges(value, ranges = []) {
+    const source = String(value ?? "");
+    const protectedRanges = normalizeSmartPunctuationRanges(ranges, source.length);
+    if (!protectedRanges.length) return normalizeSmartPunctuationText(source);
+
+    let output = "";
+    let cursor = 0;
+    for (const range of protectedRanges) {
+      if (range.start > cursor) {
+        output += normalizeSmartPunctuationText(source.slice(cursor, range.start));
+      }
+      output += source.slice(range.start, range.end);
+      cursor = range.end;
+    }
+    if (cursor < source.length) {
+      output += normalizeSmartPunctuationText(source.slice(cursor));
+    }
+    return output;
+  }
+
+  function smartPunctuationNormalizedOffset(text, offset, protectedRanges) {
+    const prefixRanges = protectedRanges
+      .filter((range) => range.start < offset)
+      .map((range) => ({ start: range.start, end: Math.min(range.end, offset) }));
+    return normalizeSmartPunctuationWithProtectedRanges(
+      text.slice(0, offset),
+      prefixRanges
+    ).length;
+  }
+
+  function remapSmartPunctuationRange(range, text, protectedRanges) {
+    const offset = Math.max(0, Number(range.offset || 0));
+    const end = offset + Math.max(0, Number(range.length || 0));
+    const mappedOffset = smartPunctuationNormalizedOffset(text, offset, protectedRanges);
+    const mappedEnd = smartPunctuationNormalizedOffset(text, end, protectedRanges);
+    return { ...range, offset: mappedOffset, length: Math.max(0, mappedEnd - mappedOffset) };
+  }
+
+  function normalizeSmartPunctuationInlineResult(result) {
+    const codeRanges = result.inlineStyleRanges
+      .filter((range) => range.style === "Code")
+      .map((range) => ({ start: range.offset, end: range.offset + range.length }));
+    const protectedRanges = normalizeSmartPunctuationRanges(codeRanges, result.text.length);
+    return {
+      ...result,
+      text: normalizeSmartPunctuationWithProtectedRanges(result.text, protectedRanges),
+      inlineStyleRanges: result.inlineStyleRanges.map((range) =>
+        remapSmartPunctuationRange(range, result.text, protectedRanges)
+      ),
+      links: result.links.map((link) => remapSmartPunctuationRange(link, result.text, protectedRanges))
+    };
+  }
+
+  function findInlineCodeRanges(text) {
+    const ranges = [];
+    const source = String(text ?? "");
+    let cursor = 0;
+    while (cursor < source.length) {
+      const open = source.indexOf("`", cursor);
+      if (open < 0) break;
+      let markerLength = 1;
+      while (source[open + markerLength] === "`") markerLength += 1;
+      const marker = "`".repeat(markerLength);
+      const close = source.indexOf(marker, open + markerLength);
+      if (close < 0) {
+        cursor = open + markerLength;
+        continue;
+      }
+      ranges.push({ start: open, end: close + markerLength });
+      cursor = close + markerLength;
+    }
+    return ranges;
+  }
+
+  function normalizeSmartPunctuationTableCell(value) {
+    const source = String(value ?? "");
+    return normalizeSmartPunctuationWithProtectedRanges(source, findInlineCodeRanges(source));
+  }
+
   function maskSmartPunctuationProtectedText(text) {
     const store = [];
     const stash = (match) => {
@@ -418,17 +523,9 @@
     const spans = [];
     let match;
 
-    const fencedCode = /```([^\n`]*)\n([\s\S]*?)```/g;
-    while ((match = fencedCode.exec(markdown)) !== null) {
-      spans.push({
-        start: match.index,
-        end: match.index + match[0].length,
-        segment: {
-          type: "code",
-          language: (match[1] || "").trim(),
-          code: (match[2] || "").replace(/\n$/, "")
-        }
-      });
+    spans.push(...findFencedCodeSpans(markdown));
+    for (const span of findIndentedCodeSpans(markdown)) {
+      if (!overlaps(spans, span.start)) spans.push(span);
     }
 
     const table = /^(?:[ \t]*\|.+\|[ \t]*\n)(?:[ \t]*\|[\s:|\-]+\|[ \t]*\n)((?:[ \t]*\|.+\|[ \t]*\n?)*)/gm;
@@ -505,6 +602,110 @@
     return spans.sort((left, right) => left.start - right.start);
   }
 
+  function findFencedCodeSpans(markdown) {
+    const spans = [];
+    const opener = /^(?: {0,3})(`{3,}|~{3,})([^\n]*)$/gm;
+    let match;
+    while ((match = opener.exec(markdown)) !== null) {
+      const marker = match[1][0];
+      const markerLength = match[1].length;
+      const contentStart = markdown[opener.lastIndex] === "\n" ? opener.lastIndex + 1 : opener.lastIndex;
+      const closer = new RegExp(`^(?: {0,3})${marker}{${markerLength},}[ \\t]*$`, "gm");
+      closer.lastIndex = contentStart;
+      const close = closer.exec(markdown);
+      if (!close) continue;
+      spans.push({
+        start: match.index,
+        end: close.index + close[0].length,
+        segment: {
+          type: "code",
+          language: (match[2] || "").trim(),
+          code: markdown.slice(contentStart, close.index).replace(/\n$/, "")
+        }
+      });
+      opener.lastIndex = close.index + close[0].length;
+    }
+    return spans;
+  }
+
+  function markdownLineRecords(markdown) {
+    const lines = [];
+    let start = 0;
+    while (start < markdown.length) {
+      const newline = markdown.indexOf("\n", start);
+      const textEnd = newline < 0 ? markdown.length : newline;
+      lines.push({
+        start,
+        end: newline < 0 ? textEnd : newline + 1,
+        text: markdown.slice(start, textEnd)
+      });
+      if (newline < 0) break;
+      start = newline + 1;
+    }
+    return lines;
+  }
+
+  function isIndentedCodeLine(line) {
+    return /^(?: {4}|\t)/.test(line?.text || "");
+  }
+
+  function unindentCodeLine(line) {
+    return String(line?.text || "").replace(/^(?: {4}|\t)/, "");
+  }
+
+  function nextNonblankLine(lines, start) {
+    for (let index = start; index < lines.length; index += 1) {
+      if ((lines[index].text || "").trim()) return lines[index];
+    }
+    return null;
+  }
+
+  function isBlankLineInsideIndentedCode(lines, index) {
+    const line = lines[index];
+    return Boolean(line && !line.text.trim() && isIndentedCodeLine(nextNonblankLine(lines, index + 1)));
+  }
+
+  function findIndentedCodeSpans(markdown) {
+    const lines = markdownLineRecords(markdown);
+    const spans = [];
+    let index = 0;
+    while (index < lines.length) {
+      if (!isIndentedCodeLine(lines[index])) {
+        index += 1;
+        continue;
+      }
+      const start = lines[index].start;
+      const codeLines = [];
+      let end = lines[index].end;
+      while (index < lines.length) {
+        const line = lines[index];
+        if (isIndentedCodeLine(line)) {
+          codeLines.push(unindentCodeLine(line));
+          end = line.end;
+          index += 1;
+          continue;
+        }
+        if (isBlankLineInsideIndentedCode(lines, index)) {
+          codeLines.push("");
+          end = line.end;
+          index += 1;
+          continue;
+        }
+        break;
+      }
+      spans.push({
+        start,
+        end,
+        segment: {
+          type: "code",
+          language: "",
+          code: codeLines.join("\n").replace(/\n$/, "")
+        }
+      });
+    }
+    return spans;
+  }
+
   function findMarkdownImageSpans(markdown) {
     const spans = [];
     let cursor = 0;
@@ -573,7 +774,7 @@
 
   function parseTable(block, options = {}) {
     const normalizeCell = options.smartPunctuation === true
-      ? normalizeSmartPunctuationText
+      ? normalizeSmartPunctuationTableCell
       : (value) => value;
     const splitRow = (line) => {
       let cells = line.replace(/\\\|/g, "\0").split("|");
@@ -667,15 +868,13 @@
     let cursor = 0;
     let plain = "";
 
-    const normalizeVisibleText = (text) =>
-      options.smartPunctuation === true ? normalizeSmartPunctuationText(text) : String(text ?? "");
     const appendPlain = () => {
       if (!plain) return;
-      result.text += normalizeVisibleText(plain);
+      result.text += plain;
       plain = "";
     };
-    const appendStyled = (text, styles, { normalize = true } = {}) => {
-      const value = normalize ? normalizeVisibleText(text) : String(text ?? "");
+    const appendStyled = (text, styles) => {
+      const value = String(text ?? "");
       const offset = result.text.length;
       result.text += value;
       for (const style of styles) {
@@ -690,7 +889,7 @@
         const link = source.slice(cursor).match(/^\[([^\]]+)\]\(([^)]+)\)/);
         if (link) {
           appendPlain();
-          const label = normalizeVisibleText(link[1]);
+          const label = String(link[1] ?? "");
           const offset = result.text.length;
           result.text += label;
           result.links.push({ offset, length: label.length, url: link[2] });
@@ -731,7 +930,7 @@
         const end = source.indexOf("`", cursor + 1);
         if (end > cursor) {
           appendPlain();
-          appendStyled(source.slice(cursor + 1, end), ["Code"], { normalize: false });
+          appendStyled(source.slice(cursor + 1, end), ["Code"]);
           cursor = end + 1;
           continue;
         }
@@ -742,7 +941,7 @@
     }
 
     appendPlain();
-    return result;
+    return options.smartPunctuation === true ? normalizeSmartPunctuationInlineResult(result) : result;
   }
 
   function segmentCounts(segments) {

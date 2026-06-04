@@ -145,9 +145,26 @@ const smartPunctuationInput = [
 ].join("\n");
 const smartPunctuationOffParsed = shared.parseMarkdown("这是测试,对吧.", { smartPunctuation: false });
 const smartPunctuationParsed = shared.parseMarkdown(smartPunctuationInput, { smartPunctuation: true });
+const smartPunctuationBodyOptions = { smartPunctuation: true, setTitle: false };
 const smartPunctuationMixedParsed = shared.parseMarkdown(
   "版本 React 18.2, 比例 16:9. 英文句子, with Chinese 中文, maybe risky. 函数 fn(a, b) 的返回值是 true, 对吗?",
-  { smartPunctuation: true, setTitle: false }
+  smartPunctuationBodyOptions
+);
+const smartPunctuationTableInlineCodeParsed = shared.parseMarkdown(
+  "| 列 |\n| --- |\n| `文案,对吗?` |",
+  smartPunctuationBodyOptions
+);
+const smartPunctuationTildeCodeParsed = shared.parseMarkdown(
+  "~~~js\nconst 文案 = \"这是测试,对吧.\";\nfn(a, b);\n~~~",
+  smartPunctuationBodyOptions
+);
+const smartPunctuationIndentedCodeParsed = shared.parseMarkdown(
+  "说明\n\n    const 文案 = \"这是测试,对吧.\";\n    fn(a, b);\n\n结束,好吗?",
+  smartPunctuationBodyOptions
+);
+const smartPunctuationInlineBoundaryParsed = shared.parseMarkdown(
+  "中文,**好吗?**\n\n[中文](https://example.test),好吗?\n\n产品,**渠道**,服务",
+  smartPunctuationBodyOptions
 );
 const smartPunctuationParagraph = smartPunctuationParsed.segments.find(
   (segment) => segment.type === "text" && segment.text.startsWith("他说")
@@ -161,6 +178,9 @@ const smartPunctuationCode = smartPunctuationParsed.segments.find((segment) => s
 const smartPunctuationInline = smartPunctuationParsed.segments.find(
   (segment) => segment.type === "text" && segment.text.startsWith("行内")
 );
+const smartPunctuationBoundaryBold = smartPunctuationInlineBoundaryParsed.segments[0];
+const smartPunctuationBoundaryLink = smartPunctuationInlineBoundaryParsed.segments[1];
+const smartPunctuationBoundaryList = smartPunctuationInlineBoundaryParsed.segments[2];
 const coverOnlyPlan = shared.buildPastePlan(
   frontmatterOnlyCoverParsed.segments,
   new Map(),
@@ -729,6 +749,30 @@ assert.equal(
   "版本 React 18.2, 比例 16:9. 英文句子, with Chinese 中文, maybe risky. 函数 fn(a, b) 的返回值是 true, 对吗？",
   "smart punctuation should preserve mixed English technical punctuation while still normalizing Chinese sentence endings"
 );
+assert.equal(
+  smartPunctuationTableInlineCodeParsed.segments[0]?.rows?.[0]?.[0],
+  "`文案,对吗?`",
+  "smart punctuation should not alter inline code inside Markdown table cells"
+);
+assert.deepEqual(
+  smartPunctuationTildeCodeParsed.segments[0],
+  { type: "code", language: "js", code: "const 文案 = \"这是测试,对吧.\";\nfn(a, b);" },
+  "smart punctuation should not alter tilde fenced code blocks"
+);
+assert.deepEqual(
+  smartPunctuationIndentedCodeParsed.segments.find((segment) => segment.type === "code"),
+  { type: "code", language: "", code: "const 文案 = \"这是测试,对吧.\";\nfn(a, b);" },
+  "smart punctuation should not alter indented Markdown code blocks"
+);
+assert.equal(smartPunctuationBoundaryBold?.text, "中文，好吗？", "smart punctuation should normalize punctuation across bold boundaries");
+assert.equal(smartPunctuationBoundaryBold?.inlineStyleRanges?.[0]?.offset, 3, "bold offset should follow normalized punctuation");
+assert.equal(smartPunctuationBoundaryLink?.text, "中文，好吗？", "smart punctuation should normalize punctuation after link labels");
+assert.deepEqual(
+  smartPunctuationBoundaryLink?.links?.[0],
+  { offset: 0, length: 2, url: "https://example.test" },
+  "link offsets should survive full-line smart punctuation"
+);
+assert.equal(smartPunctuationBoundaryList?.text, "产品、渠道、服务", "smart punctuation should normalize list punctuation across styled text");
 assert.ok(counts.image >= 1, "fixture should include an image");
 assert.ok(counts.table >= 1, "fixture should include a table");
 assert.ok(counts.tweet >= 1, "fixture should include a tweet");
@@ -833,10 +877,12 @@ assert.ok(
     "options.titleCandidate || options.fallbackTitle || options.sourceTitle",
     "sourceFileName: pending?.fileName || sourceFileName",
     "sourceFileName: stored?.fileName || sourceFileName",
-    "preflightArticleMediaLimit(text, { sourceFileName })",
-    "preflightArticleMediaLimit(pending.markdown, { sourceFileName })",
-    "return importMarkdown(text, origin, { sourceFileName: file.name || \"\" });",
-    "return importMarkdown(pending?.markdown || markdown, pending?.source || source, { sourceFileName: pendingSourceFileName });",
+    "preflightArticleMediaLimit(text, importOptions)",
+    "preflightArticleMediaLimit(pending.markdown, importOptions)",
+    "const IMPORT_OPTIONS_STORAGE_KEY = \"xposter_import_options\";",
+    "async function pageImportOptions",
+    "return importMarkdown(text, origin, await pageImportOptions({ sourceFileName: file.name || \"\" }))",
+    "await pageImportOptions({ sourceFileName: pendingSourceFileName })",
     "const parsed = shared.parseMarkdown(markdown || \"\", { sourceFileName: fallback });"
   ]),
   "content script should preserve source filenames through direct Markdown file imports, pending navigation, preflight, and side-panel queue titles"
