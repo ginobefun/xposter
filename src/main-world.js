@@ -15,6 +15,7 @@
   const MEDIA_UPLOAD_USER_RETRY_AFTER_MS = 15000;
   const MEDIA_UPLOAD_MAX_ATTEMPTS = 3;
   const MEDIA_UPLOAD_RETRY_MIN_REMAINING_MS = 10000;
+  const MEDIA_UPLOAD_DEFERRED_RETRY_DELAY_MS = 3000;
   const MEDIA_UPLOAD_TIMEOUT_ERROR =
     "X media upload took too long. X may be throttling this draft, especially with many images. Wait a moment, then write again or split the article.";
 
@@ -1410,6 +1411,65 @@
 
       const uploads = [];
       let coverUpload = null;
+      const applyUploadResult = async (op, index, result) => {
+        summary.imgOk += 1;
+        if (result.mediaPending) summary.imgPending += 1;
+        uploads.push({
+          marker: op.marker,
+          blockKey: result.blockKey,
+          entityKey: result.entityKey,
+          markerBlock: result.markerBlock,
+          markerOffset: result.markerOffset,
+          markerLength: result.markerLength,
+          markerExact: result.markerExact,
+          mediaId: result.mediaId,
+          source: op.op.source,
+          coverOnly: Boolean(op.op.coverOnly),
+          settled: Boolean(op.op.coverOnly)
+        });
+        const upload = uploads[uploads.length - 1];
+        if (!upload.coverOnly) {
+          progress(`Image ${index + 1}/${imageOps.length} is in the editor; continuing...`);
+          const settleResult = await settleUploadedImageAtMarker(draftNode, upload, protectedAtomicBlocks);
+          draftNode = settleResult.draftNode;
+          summary.relocatedImages += settleResult.moved;
+          summary.markersCleaned += settleResult.markerCleaned;
+          upload.settled = !settleResult.missing;
+        }
+        if (payload.cover && imageSourcesMatch(upload.source, payload.cover) && !upload.mediaId && !summary.cover.graphql && !summary.cover.skippedReason) {
+          const refreshed = await waitForUploadMediaId(draftNode, upload);
+          draftNode = refreshed.draftNode;
+        }
+        if (upload.coverOnly && !coverUpload) coverUpload = upload;
+        if (uploadMatchesCover(upload, payload.cover) && !summary.cover.graphql && !summary.cover.skippedReason) {
+          coverUpload = upload;
+          await applyCoverMetadata(payload.cover, articleId, upload, summary);
+        }
+      };
+      const recordImageFailure = (op, index, result) => {
+        summary.imgFail += 1;
+        summary.imageErrors.push({
+          kind: imageOperationKind(op),
+          index: index + 1,
+          marker: op.marker,
+          source: op.op.source || null,
+          fileName: op.op.file?.fileName || null,
+          error: result.error || "Image upload failed"
+        });
+        draftNode = findDraftStateNode() || draftNode;
+        replaceMarkerText(draftNode, op.marker, op.op.fallbackText || (op.op.coverOnly ? "" : "[image upload failed]"));
+        console.warn(LOG, "image failed", result.error);
+      };
+      // X's media uploader can be momentarily saturated mid-run, which makes
+      // later images time out before X ever inserts a MEDIA entity. Those
+      // failures are safe to retry once the queue drains, so defer them instead
+      // of immediately replacing the marker with Markdown. A failure is only
+      // retryable when no media entity was inserted (X never started, or the
+      // file/marker was not ready) — retrying a pending/in-flight upload would
+      // duplicate it.
+      const isDeferrableFailure = (op, result) =>
+        !op.op.coverOnly && !result.pendingEntity && (result.noEntity || result.recoverable);
+      const deferredFailures = [];
       for (let index = 0; index < imageOps.length; index += 1) {
         throwIfCancelled();
         draftNode = findDraftStateNode() || draftNode;
@@ -1420,53 +1480,36 @@
           total: imageOps.length
         });
         if (result.ok) {
-          summary.imgOk += 1;
-          if (result.mediaPending) summary.imgPending += 1;
-          uploads.push({
-            marker: op.marker,
-            blockKey: result.blockKey,
-            entityKey: result.entityKey,
-            markerBlock: result.markerBlock,
-            markerOffset: result.markerOffset,
-            markerLength: result.markerLength,
-            markerExact: result.markerExact,
-            mediaId: result.mediaId,
-            source: op.op.source,
-            coverOnly: Boolean(op.op.coverOnly),
-            settled: Boolean(op.op.coverOnly)
-          });
-          const upload = uploads[uploads.length - 1];
-          if (!upload.coverOnly) {
-            progress(`Image ${index + 1}/${imageOps.length} is in the editor; continuing...`);
-            const settleResult = await settleUploadedImageAtMarker(draftNode, upload, protectedAtomicBlocks);
-            draftNode = settleResult.draftNode;
-            summary.relocatedImages += settleResult.moved;
-            summary.markersCleaned += settleResult.markerCleaned;
-            upload.settled = !settleResult.missing;
-          }
-          if (payload.cover && imageSourcesMatch(upload.source, payload.cover) && !upload.mediaId && !summary.cover.graphql && !summary.cover.skippedReason) {
-            const refreshed = await waitForUploadMediaId(draftNode, upload);
-            draftNode = refreshed.draftNode;
-          }
-          if (upload.coverOnly && !coverUpload) coverUpload = upload;
-          if (uploadMatchesCover(upload, payload.cover) && !summary.cover.graphql && !summary.cover.skippedReason) {
-            coverUpload = upload;
-            await applyCoverMetadata(payload.cover, articleId, upload, summary);
-          }
+          await applyUploadResult(op, index, result);
+        } else if (isDeferrableFailure(op, result)) {
+          deferredFailures.push({ op, index, result });
         } else {
-          summary.imgFail += 1;
-          summary.imageErrors.push({
-            kind: imageOperationKind(op),
-            index: index + 1,
-            marker: op.marker,
-            source: op.op.source || null,
-            fileName: op.op.file?.fileName || null,
-            error: result.error || "Image upload failed"
-          });
-          replaceMarkerText(draftNode, op.marker, op.op.fallbackText || (op.op.coverOnly ? "" : "[image upload failed]"));
-          console.warn(LOG, "image failed", result.error);
+          recordImageFailure(op, index, result);
         }
         draftNode = findDraftStateNode() || draftNode;
+      }
+
+      if (deferredFailures.length) {
+        throwIfCancelled();
+        progress(`Finishing ${deferredFailures.length} image(s) X did not accept yet...`, "warn");
+        // Give X's uploader time to drain the earlier uploads before retrying.
+        await sleep(MEDIA_UPLOAD_DEFERRED_RETRY_DELAY_MS);
+        for (const failure of deferredFailures) {
+          throwIfCancelled();
+          draftNode = findDraftStateNode() || draftNode;
+          const { op, index } = failure;
+          progress(`Re-uploading image ${index + 1}/${imageOps.length}...`, "warn");
+          const retryResult = await uploadImageAtMarker(draftNode, op, protectedAtomicBlocks, {
+            index: index + 1,
+            total: imageOps.length
+          });
+          if (retryResult.ok) {
+            await applyUploadResult(op, index, retryResult);
+          } else {
+            recordImageFailure(op, index, retryResult);
+          }
+          draftNode = findDraftStateNode() || draftNode;
+        }
       }
 
       const unsettledUploads = uploads.filter((upload) => !upload.coverOnly && !upload.settled);

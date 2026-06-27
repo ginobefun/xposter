@@ -1935,6 +1935,16 @@ assert.ok(
   "main-world image uploads should relocate and clean each marker as soon as that image reaches the editor"
 );
 assert.ok(
+  mainWorldText.includes("const isDeferrableFailure = (op, result) =>") &&
+    mainWorldText.includes("!op.op.coverOnly && !result.pendingEntity && (result.noEntity || result.recoverable)") &&
+    mainWorldText.includes("const deferredFailures = [];") &&
+    mainWorldText.includes("deferredFailures.push({ op, index, result });") &&
+    mainWorldText.includes("await sleep(MEDIA_UPLOAD_DEFERRED_RETRY_DELAY_MS);") &&
+    mainWorldText.includes("Re-uploading image ${index + 1}/${imageOps.length}...") &&
+    mainWorldText.includes("recordImageFailure(op, index, retryResult);"),
+  "main-world should defer entity-free image failures and retry them once X's uploader drains before falling back to Markdown"
+);
+assert.ok(
   mainWorldText.includes("let markersWritten = false") &&
     mainWorldText.includes("markersWritten = true") &&
     mainWorldText.includes("if (markersWritten)") &&
